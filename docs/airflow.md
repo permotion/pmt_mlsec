@@ -122,46 +122,225 @@ En `airflow/airflow.cfg`:
 **Trigger:** manual (`schedule=None`)
 **Tags:** `model-a`, `csic2010`
 
-### Pipeline
+### Flujo de datos
 
-```
-verify_data → preprocess → train → evaluate
+```mermaid
+flowchart LR
+    A["data/raw/csic2010/\ncsic_database.csv\n61.065 rows"] --> B["preprocess\npreprocess_csic_v4.py"]
+    B --> C["data/processed/csic2010/\nfeatures_v4.parquet\n23 features"]
+    C --> D["train\ntrain_model_a_pipeline.py"]
+    D --> E[("MLflow\nmlsec-model-a\nrun: model-a-lightgbm-pipeline")]
+    D --> F["✓ DagRun successful"]
+    style E fill:#2d2,color:#000
+    style F fill:#2d2,color:#000
 ```
 
-| Tarea | Tipo | Qué hace |
+### Tareas en detalle
+
+#### `verify_data` — PythonOperator
+
+Verifica que el dataset crudo existe y tiene contenido antes de procesar. Si el archivo falta, falla inmediatamente sin dejar un parquet vacío.
+
+```python
+def check_raw_data():
+    if not DATA_RAW.exists():
+        raise FileNotFoundError(...)
+    size_mb = DATA_RAW.stat().st_size / 1024 / 1024
+    print(f"Dataset encontrado: {DATA_RAW} ({size_mb:.1f} MB)")
+```
+
+**Input:** `data/raw/csic2010/csic_database.csv` (~60 MB)  
+**Output:** log stdout confirmando existencia  
+**Falla si:** el archivo no existe o está vacío
+
+---
+
+#### `preprocess` — BashOperator
+
+Ejecuta `preprocess_csic_v4.py` dentro del intérprete de Python del contenedor. Genera el parquet de features listo para training.
+
+```bash
+python3 /opt/airflow/src/mlsec/data/preprocess_csic_v4.py
+```
+
+**Script:** `src/mlsec/data/preprocess_csic_v4.py`  
+**Input:** `data/raw/csic2010/csic_database.csv`  
+**Output:** `data/processed/csic2010/features_v4.parquet` (23 features + label)  
+**Falla si:** el CSV no existe, tiene formato inesperado, o falla la serialización del parquet
+
+**Features generadas:**
+
+| Feature | Tipo | Descripción |
 |---|---|---|
-| `verify_data` | PythonOperator | Verifica que `csic_database.csv` existe |
-| `preprocess` | BashOperator | Corre `preprocess_csic_v4.py` → genera `features_v4.parquet` |
-| `train` | BashOperator | Corre `train_model_a_pipeline.py` con MLflow logging |
-| `evaluate` | BashOperator | Verifica shape del parquet generado |
+| `url_length` | continua | Longitud de URL |
+| `url_query_length` | continua | Longitud del query string |
+| `content_length` | continua | Longitud del body |
+| `method_is_get` | binaria | GET = 1 |
+| `method_is_post` | binaria | POST = 1 |
+| `method_is_put` | binaria | PUT = 1 (100% ataques) |
+| `url_pct27`, `url_pct3c`, ... | binaria | Indicadores %XX URL-encoded |
+| `content_param_count` | entera | Count de `=` en body |
+| `content_param_density` | continua | `content_param_count / content_length` |
+| 11 features más | ... | Ver `docs/model_a/v6.md` |
+
+---
+
+#### `train` — BashOperator
+
+Ejecuta `train_model_a_pipeline.py`. Esta es la tarea principal — entrena el modelo, calibra el threshold, y loggea todo en MLflow.
+
+```bash
+python3 /opt/airflow/src/mlsec/models/train_model_a_pipeline.py \
+    --features /opt/airflow/data/processed/csic2010/features_v4.parquet \
+    --min-recall 0.955
+```
+
+**Script:** `src/mlsec/models/train_model_a_pipeline.py`
+
+**Pipeline interno:**
+
+```
+Parquet → Split 70/15/15 → Scale (solo continuas)
+    → LightGBM (scale_pos_weight)
+    → Calibrar threshold en val (min_recall_val=0.955)
+    → Evaluar en test
+    → Loggear en MLflow
+    → Exit 0 o 1
+```
+
+**Split estratificado (seed=42):**
+
+| Set | Filas | Propósito |
+|---|---|---|
+| Train | 42.745 | Ajuste del modelo |
+| Val | 9.160 | Calibración del threshold |
+| Test | 9.160 | Evaluación final (reported) |
+
+**LightGBM config:**
+
+```python
+LGBMClassifier(
+    n_estimators=200,
+    scale_pos_weight=neg/pos,   # ~1.44 (desbalance leve 59/41)
+    random_state=42,
+    n_jobs=-1,
+    verbose=-1,
+)
+```
+
+**Calibración de threshold:**
+
+```
+find_best_threshold(y_val, val_proba, min_recall=0.955)
+→ busca el threshold que maximiza Precision
+   manteniendo Recall >= 0.955 en val
+```
+
+Resultado: threshold = **0.2903** (vs default 0.5)
+
+**Qué se loggea en MLflow:**
+
+| Tipo | Contenido |
+|---|---|
+| Params | `model`, `n_features=23`, `min_recall_val=0.955`, `threshold=0.2903`, `random_state=42` |
+| Métricas | `test_recall=0.9548`, `test_precision=0.7928`, `test_roc_auc=0.9661`, `test_fp=938` |
+| Artefacto | `model/` — modelo serializado con `mlflow.sklearn.log_model()` |
+
+**Exit codes:**
+
+| Exit | Condición | Efecto en Airflow |
+|---|---|---|
+| `0` | Recall test ≥ 0.95 | Tarea verde ✅ |
+| `1` | Recall test < 0.95 | Tarea roja ❌, DagRun fallido |
+
+**Métricas del último run:**
+
+```
+ROC-AUC:   0.9661
+Recall:    0.9548 ✅
+Precision: 0.7928
+FP:        938
+```
+
+**Falla si:** el parquet no existe, LightGBM falla, o MLflow no puede loggear.
+
+---
+
+#### `evaluate` — BashOperator
+
+Verifica que el parquet de features quedó generado correctamente. No reentrena ni evalúa — es un checkpoint sanitario.
+
+```python
+df = pd.read_parquet('/opt/airflow/data/processed/csic2010/features_v4.parquet')
+print(f'features_v4.parquet: {df.shape[0]} filas, {df.shape[1]-1} features')
+print('Pipeline completado exitosamente.')
+```
+
+**Input:** `features_v4.parquet`  
+**Output:** log stdout con shape del dataset  
+**Falla si:** el archivo no fue generado por `preprocess`
+
+---
 
 ### Cómo triggerear
 
 1. Entrá a `http://localhost:5080`
 2. Buscá `dag_model_a`
-3. Activá el toggle (arranca pausado)
+3. Activá el toggle (arranca pausado por defecto)
 4. Click en **▶ Trigger DAG**
 5. Monitoreá en Graph o Grid
 
-### Interpreter
+---
 
-En Docker usa `python3` (MLSEC_PYTHON configurado en `docker-compose.yml`). En local usa `.venv/bin/python`.
+### Dependencias entre tareas
 
-### Exit codes
+```
+verify_data  →  preprocess  →  train  →  evaluate
+```
 
-`train_model_a_pipeline.py` usa exit codes para comunicar el resultado a Airflow:
+Si `verify_data` o `preprocess` falla, `train` no corre (dependencia implícita por orden). Si `train` falla, `evaluate` no corre.
 
-| Exit code | Significado |
-|---|---|
-| `0` | Recall ≥ 0.95 en test — pipeline exitoso |
-| `1` | Recall < 0.95 — tarea marcada como fallida |
+---
+
+### Logs de tareas
+
+Cada tarea escribe su stdout/stderr a:
+
+```
+airflow-logs/
+└── dag_model_a/
+    └── run_id=manual__2026-04-13T15:30:57.458592+00:00/
+        ├── task_id=verify_data/attempt=1.log
+        ├── task_id=preprocess/attempt=1.log
+        ├── task_id=train/attempt=6.log   ← retries por fallos previos
+        └── task_id=evaluate/attempt=1.log
+```
+
+En Docker: `docker exec pmtmlsec-airflow-scheduler-1 cat /opt/airflow/logs/...`  
+En local: `airflow/logs/`
+
+---
+
+### Variables de entorno relevantes
+
+| Variable | Valor en Docker | Efecto |
+|---|---|---|
+| `MLFLOW_TRACKING_URI` | `http://mlflow:5000` | Cliente MLflow apunta al servidor |
+| `MLSEC_PYTHON` | `python3` | Intérprete para BashOperators |
+| `PYTHONPATH` | `/opt/airflow/src` | Permite imports de `src/mlsec/` |
+
+En local: `MLFLOW_TRACKING_URI` no está seteada → usa `sqlite:///mlflow.db` por default.
+
+---
 
 ### Resultados en MLflow
 
 Cada ejecución del DAG loggea un run en el experimento `mlsec-model-a` con nombre `model-a-lightgbm-pipeline`.
 
-En Docker: `http://localhost:5081` → experimento `mlsec-model-a`  
+En Docker: `http://localhost:5081` → experimento `mlsec-model-a` → runs  
 En local: `mlflow ui --backend-store-uri sqlite:///mlflow.db`
+
+**Runs acumulativos (2026-04-13):** 40 runs — 20 migrados de SQLite + 19 de notebooks + 1 del DAG.
 
 ---
 
@@ -169,17 +348,26 @@ En local: `mlflow ui --backend-store-uri sqlite:///mlflow.db`
 
 ```
 docker/
-├── Dockerfile.airflow        # imagen con ML deps + libgomp1
+├── Dockerfile.airflow        # apache/airflow:2.10.4 + libgomp1 + deps ML
 ├── Dockerfile.mlflow        # python:3.11-slim + mlflow 2.22.4
 ├── docker-compose.yml       # servicios
 ├── init-dbs.sql            # DB mlflow en postgres
-└── migrate_mlflow.py       # migración runs
+└── migrate_mlflow.py       # migración runs SQLite → Postgres
 
 dags/
 └── dag_model_a.py          ← DAG de Airflow
 
-src/mlsec/models/
-└── train_model_a_pipeline.py   ← Script de training para el DAG
+src/mlsec/
+├── data/
+│   └── preprocess_csic_v4.py   ← Preprocessing (genera features_v4.parquet)
+└── models/
+    └── train_model_a_pipeline.py  ← Training + MLflow (invocado por DAG)
+
+data/
+├── raw/csic2010/
+│   └── csic_database.csv        ← Dataset original (NO se modifica)
+└── processed/csic2010/
+    └── features_v4.parquet      ← Features generadas por preprocess
 
 airflow/                    ← Runtime local (no versionado)
 ├── airflow.cfg
