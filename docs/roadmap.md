@@ -301,11 +301,23 @@ Los 20 runs históricos de `mlflow.db` (SQLite) fueron migrados al servidor Dock
     Usar **ROC-AUC** (rank-based) o **F1-score** (balance de P y R).
     Ver también: Matthews Correlation Coefficient, Precision-Recall curve.
 
+**Endpoints:**
+
+| Endpoint | Método | Descripción |
+|---|---|---|
+| `/health` | GET | Estado de la API y del modelo |
+| `/features` | GET | Lista de 23 features esperadas |
+| `/predict` | POST | Clasificación: prediction + probability |
+
 **Entregables:**
 
-- [ ] FastAPI endpoint para predicciones offline
-- [ ] Input validation
-- [ ] Logging de predicciones
+- [x] `src/mlsec/api/main.py` — FastAPI app ✅
+- [x] `src/mlsec/api/models.py` — Pydantic schemas ✅
+- [x] `src/mlsec/api/model_loader.py` — carga desde pickle o MLflow ✅
+- [x] `docker/Dockerfile.api` — imagen Docker ✅
+- [x] `docker/requirements-api.txt` — dependencias ✅
+- [ ] Logging de predicciones a archivo/DB
+- [ ] Tests de integración
 
 ---
 
@@ -316,5 +328,5 @@ Phase 1 ✅   Definición + descarga de datasets
 Phase 2 ✅   EDA ✅ → Preprocessing ✅
 Phase 3 🔄   Training — Modelo A ✅ concluido → Modelo B en progreso
 Phase 4 🔄   Airflow local ✅ dag_model_a ✅ → dag_model_b pendiente → Docker ✅
-Phase 5 🔒   API de inferencia
+Phase 5 🔄   API de inferencia
 ```

@@ -55,6 +55,7 @@ nav:
     - Setup y convenciones: mlflow.md
     - Cómo leer un run: mlflow_runs.md
   - Airflow: airflow.md
+  - API — FastAPI: api.md
   - Glosario: glossary.md
 
 markdown_extensions:

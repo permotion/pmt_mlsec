@@ -1,0 +1,21 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Dependencias (build context = raíz del proyecto)
+COPY requirements-api.txt /tmp/requirements-api.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-api.txt
+
+# Código de la API
+COPY src/mlsec/api /app/mlsec/api
+COPY src/mlsec/data /app/mlsec/data
+COPY src/mlsec/models /app/mlsec/models
+
+ENV PYTHONPATH=/app
+ENV HOST=0.0.0.0
+ENV PORT=5000
+
+# El modelo se carga desde MLFLOW_TRACKING_URI o MODEL_PATH (puede montarse como volumen)
+EXPOSE 5000
+
+CMD ["python", "-m", "mlsec.api.main"]
