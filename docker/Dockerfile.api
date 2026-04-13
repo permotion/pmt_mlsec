@@ -13,7 +13,7 @@ COPY src/mlsec/models /app/mlsec/models
 
 ENV PYTHONPATH=/app
 ENV HOST=0.0.0.0
-ENV PORT=5000
+ENV PORT=5082
 
 # El modelo se carga desde MLFLOW_TRACKING_URI o MODEL_PATH (puede montarse como volumen)
 EXPOSE 5000

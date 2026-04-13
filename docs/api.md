@@ -2,8 +2,8 @@
 
 Endpoint REST para clasificar requests HTTP como ataque (1) o normal (0) usando el modelo LightGBM de Model A.
 
-**En producción (Docker):** `http://localhost:5000`  
-**UI de docs interactiva:** `http://localhost:5000/docs`
+**En producción (Docker):** `http://localhost:5082`  
+**UI de docs interactiva:** `http://localhost:5082/docs`
 
 ---
 
@@ -14,7 +14,7 @@ Endpoint REST para clasificar requests HTTP como ataque (1) o normal (0) usando 
 Verifica que la API está viva y el modelo está cargado.
 
 ```bash
-curl http://localhost:5000/health
+curl http://localhost:5082/health
 ```
 
 ```json
@@ -34,7 +34,7 @@ Si el modelo no está disponible, responde con `503 degraded`.
 Lista las 23 features que el modelo espera, en orden.
 
 ```bash
-curl http://localhost:5000/features
+curl http://localhost:5082/features
 ```
 
 ```json
@@ -53,7 +53,7 @@ curl http://localhost:5000/features
 Clasifica un request HTTP.
 
 ```bash
-curl -X POST http://localhost:5000/predict \
+curl -X POST http://localhost:5082/predict \
   -H "Content-Type: application/json" \
   -d '{
     "url_length": 127,
@@ -114,7 +114,7 @@ docker compose -f docker/docker-compose.yml up api
 
 | Servicio | Puerto | URL |
 |---|---|---|
-| API | 5000 | http://localhost:5000/docs |
+| API | 5082 | http://localhost:5082/docs |
 | Airflow | 5080 | http://localhost:5080 |
 | MLflow | 5081 | http://localhost:5081 |
 
