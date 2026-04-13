@@ -34,6 +34,9 @@ standalone_admin_password.txt
 # Entorno virtual de Airflow
 .venv-airflow/
 
+# Secrets / entorno local
+.env
+
 # Claude Code
 .claude/
 

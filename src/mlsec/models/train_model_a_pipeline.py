@@ -16,6 +16,7 @@ Comportamiento:
 """
 
 import argparse
+import os
 import sys
 import numpy as np
 import pandas as pd
@@ -131,7 +132,8 @@ def train(features_path: Path, min_recall_val: float) -> dict:
 
 
 def log_to_mlflow(results: dict):
-    mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DB}")
+    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI", f"sqlite:///{MLFLOW_DB}")
+    mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment(EXPERIMENT)
 
     with mlflow.start_run(run_name="model-a-lightgbm-pipeline"):

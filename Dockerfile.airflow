@@ -1,0 +1,6 @@
+FROM apache/airflow:2.10.4
+
+# Instalar dependencias de ML en el entorno de Airflow
+# Se usa requirements-ml.txt (sin jupyter ni herramientas de notebook)
+COPY requirements-ml.txt /requirements-ml.txt
+RUN pip install --no-cache-dir -r /requirements-ml.txt

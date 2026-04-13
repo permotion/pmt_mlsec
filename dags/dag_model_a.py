@@ -4,12 +4,19 @@ DAG — Modelo A (CSIC 2010) — Web Attack Detection
 Pipeline:
     verify_data → preprocess → train → evaluate
 
-Cada tarea corre con el intérprete de .venv (scikit-learn, LightGBM, MLflow).
-Airflow actúa como orquestador — no necesita las librerías de ML instaladas.
+Compatible con Docker y con entorno local.
 
-Trigger: manual (schedule=None)
+En Docker:
+  - MLSEC_PYTHON=python3  (ML packages instalados en la imagen)
+  - PYTHONPATH=/opt/airflow/src
+  - MLFLOW_TRACKING_URI=http://mlflow:5000
+
+En local:
+  - MLSEC_PYTHON defaults a .venv/bin/python
+  - Trigger: manual (schedule=None)
 """
 
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -17,8 +24,12 @@ from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 
-ROOT     = Path(__file__).resolve().parents[1]
-PYTHON   = ROOT / ".venv" / "bin" / "python"
+ROOT = Path(__file__).resolve().parents[1]
+
+# En Docker: MLSEC_PYTHON=python3 (seteado en docker-compose.yml)
+# En local:  usa .venv/bin/python (tiene scikit-learn, lightgbm, mlflow)
+PYTHON = os.environ.get("MLSEC_PYTHON", str(ROOT / ".venv" / "bin" / "python"))
+
 DATA_RAW = ROOT / "data" / "raw" / "csic2010" / "csic_database.csv"
 DATA_OUT = ROOT / "data" / "processed" / "csic2010" / "features_v4.parquet"
 
@@ -64,10 +75,9 @@ with DAG(
         task_id="evaluate",
         bash_command=(
             f"{PYTHON} -c \""
-            f"import pandas as pd, sys; "
-            f"path = '{DATA_OUT}'; "
-            f"df = pd.read_parquet(path); "
-            f"print(f'Features_v4 generado: {{df.shape[0]}} rows, {{df.shape[1]-1}} features'); "
+            f"import pandas as pd; "
+            f"df = pd.read_parquet('{DATA_OUT}'); "
+            f"print(f'features_v4.parquet: {{df.shape[0]}} filas, {{df.shape[1]-1}} features'); "
             f"print('Pipeline completado exitosamente.')"
             f"\""
         ),
