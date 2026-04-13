@@ -1,0 +1,35 @@
+# MLflow
+mlruns/
+mlartifacts/
+mlflow.db
+
+# Datos crudos y procesados (no versionar datos)
+data/raw/
+data/processed/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# MkDocs build
+site/
+
+# Modelos entrenados
+models/
+
+# Airflow
+logs/
+airflow.db
+airflow.cfg
+standalone_admin_password.txt
+
+# OS
+.DS_Store

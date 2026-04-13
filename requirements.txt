@@ -1,0 +1,24 @@
+# ML core
+pandas>=2.2
+numpy>=1.26
+scikit-learn>=1.4
+imbalanced-learn>=0.12
+
+# Experiment tracking
+mlflow>=2.12
+
+# Notebooks
+jupyter>=1.0
+notebook>=7.0
+ipykernel>=6.0
+
+# Visualization
+matplotlib>=3.8
+seaborn>=0.13
+
+# Orquestación (Phase 4+)
+# apache-airflow>=2.9   # descomentar en Phase 4
+
+# Utils
+python-dotenv>=1.0
+tqdm>=4.66

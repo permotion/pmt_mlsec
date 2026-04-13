@@ -1,0 +1,88 @@
+site_name: PMT MLSec
+site_description: ML-based security attack detection system
+site_author: Permotion
+
+theme:
+  name: material
+  language: es
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Modo oscuro
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Modo claro
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.code.annotate
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Inicio: index.md
+  - Roadmap: roadmap.md
+  - Brief: brief.md
+  - Datasets: datasets.md
+  - EDA: eda.md
+  - Modelo A:
+    - Resumen: model_a/index.md
+    - Baseline: model_a/baseline.md
+    - v1 — Análisis de features: model_a/v1.md
+    - v2 — URL features: model_a/v2.md
+    - v3 — Content POST + MLflow: model_a/v3.md
+    - v4 — URL structure GET: model_a/v4.md
+    - v5 — Calibración threshold: model_a/v5.md
+    - v6 — content_param_density: model_a/v6.md
+    - v7 — Latin-1 encoding: model_a/v7.md
+  - Modelo B:
+    - Estado actual: model_b/index.md
+  - Experimentos (convenciones): experiments.md
+  - MLflow:
+    - Setup y convenciones: mlflow.md
+    - Cómo leer un run: mlflow_runs.md
+  - Glosario: glossary.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+plugins:
+  - search:
+      lang: es
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/permotion
