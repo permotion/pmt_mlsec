@@ -34,5 +34,8 @@ standalone_admin_password.txt
 # Entorno virtual de Airflow
 .venv-airflow/
 
+# Claude Code
+.claude/
+
 # OS
 .DS_Store
