@@ -197,16 +197,38 @@ MLflow integrado desde v3 de Modelo A. Backend SQLite en `mlflow.db`. Experiment
 
 ---
 
-### Phase 4 — Optimización + Airflow :material-lock:
+### Phase 4 — Optimización + Airflow :material-progress-clock:
 
-!!! info "Airflow se introduce aquí"
-    En Phase 1-3 los pipelines corren con scripts Python directos.
-    Airflow se introduce cuando el pipeline tiene múltiples etapas encadenadas.
+**Estado:** en progreso — DAG de Modelo A funcionando
+
+#### Phase 4.1 — Airflow local (dev) :material-progress-clock:
+
+Airflow instalado en entorno separado (`.venv-airflow`, Python 3.12) para no interferir con las dependencias de ML. Los DAGs invocan los scripts de `.venv` como subprocesos — Airflow actúa como orquestador puro.
+
+**Entregables:**
+
+- [x] Airflow 2.10.4 instalado en `.venv-airflow` ✅
+- [x] `dags/dag_model_a.py` — pipeline completo `verify_data → preprocess → train → evaluate` ✅
+- [x] `src/mlsec/models/train_model_a_pipeline.py` — script de training con MLflow para el DAG ✅
+- [ ] `dags/dag_model_b.py` — pipeline Modelo B pendiente
+- [ ] Hyperparameter tuning (GridSearch / Optuna)
+
+**Cómo levantar:**
+
+```bash
+# Terminal 1
+AIRFLOW_HOME="$(pwd)/airflow" .venv-airflow/bin/airflow webserver --port 5080 --debug
+
+# Terminal 2
+AIRFLOW_HOME="$(pwd)/airflow" .venv-airflow/bin/airflow scheduler 2>&1 | grep -v "SIGSEGV\|Worker (pid"
+```
+
+Ver [documentación de Airflow](airflow.md) para el detalle completo.
+
+#### Phase 4.2 — Docker (producción) :material-lock:
 
 !!! info "MLflow pasa a Docker en esta fase"
-    En Phase 3, MLflow corre local con `mlflow ui` y guarda en `mlflow.db` — suficiente para notebooks.
-    En Phase 4, Airflow necesita hablar con MLflow desde los DAGs, lo que requiere una URL estable.
-    MLflow se dockeriza junto con Airflow en un `docker-compose.yml` compartido.
+    En Phase 4.2, Airflow y MLflow se dockerizan para tener URLs estables entre servicios.
 
     ```
     services:
@@ -216,13 +238,9 @@ MLflow integrado desde v3 de Modelo A. Backend SQLite en `mlflow.db`. Experiment
       postgres          ← backend store compartido (MLflow + Airflow)
     ```
 
-    Los DAGs loggean a `http://mlflow:5000` dentro de la red Docker.
-
 **Entregables:**
 
-- [ ] Hyperparameter tuning (GridSearch / Optuna)
 - [ ] `docker-compose.yml` con MLflow + Airflow + Postgres
-- [ ] DAGs de Airflow: `ingest → preprocess → train → evaluate → register`
 - [ ] Model registry en MLflow
 
 ---
@@ -243,6 +261,6 @@ MLflow integrado desde v3 de Modelo A. Backend SQLite en `mlflow.db`. Experiment
 Phase 1 ✅   Definición + descarga de datasets
 Phase 2 ✅   EDA ✅ → Preprocessing ✅
 Phase 3 🔄   Training — Modelo A ✅ concluido → Modelo B en progreso
-Phase 4 🔒   Optimización + Airflow
+Phase 4 🔄   Airflow local ✅ dag_model_a → dag_model_b pendiente → Docker 🔒
 Phase 5 🔒   API de inferencia
 ```

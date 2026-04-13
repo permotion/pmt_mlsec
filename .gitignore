@@ -22,14 +22,17 @@ build/
 # MkDocs build
 site/
 
-# Modelos entrenados
-models/
+# Artefactos de modelos entrenados (carpeta raíz, no src/)
+/models/
 
-# Airflow
-logs/
-airflow.db
-airflow.cfg
+# Airflow — runtime (no versionar)
+airflow/logs/
+airflow/airflow.db
+airflow/webserver_config.py
 standalone_admin_password.txt
+
+# Entorno virtual de Airflow
+.venv-airflow/
 
 # OS
 .DS_Store

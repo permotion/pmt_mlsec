@@ -54,6 +54,7 @@ nav:
   - MLflow:
     - Setup y convenciones: mlflow.md
     - Cómo leer un run: mlflow_runs.md
+  - Airflow: airflow.md
   - Glosario: glossary.md
 
 markdown_extensions:
