@@ -150,16 +150,16 @@ Entrenamos y refinamos el modelo de detección de ataques web a lo largo de 7 it
 
 | Métrica | Valor | Target | Estado |
 |---|---|---|---|
-| Recall | 0.953 | 0.95 | ✅ |
-| Precision | 0.793 | 0.85 | ❌ |
-| ROC-AUC | 0.968 | — | — |
-| FP | 936 | ~630 | ❌ |
+| Recall | 0.9548 | 0.95 | ✅ |
+| Precision | 0.7928 | 0.85 | ❌ |
+| ROC-AUC | 0.9661 | — | — |
+| FP | 938 | ~630 | ❌ |
 
-**Decisión:** se acepta Precision 0.793 como techo práctico del enfoque de features de campos HTTP individuales. Los 936 FP restantes requieren parseo semántico de valores de parámetros o features de sesión — fuera del scope del MVP.
+**Decisión:** se acepta Precision ~0.793 como techo práctico del enfoque de features de campos HTTP individuales. Los 938 FP restantes requieren parseo semántico de valores de parámetros o features de sesión — fuera del scope del MVP.
 
-**Mejor modelo:** LightGBM con `min_recall_val=0.955`, threshold calibrado 0.2573.
+**Mejor modelo:** LightGBM con `min_recall_val=0.955`, threshold calibrado **0.2903** (DAG run 2026-04-13).
 
-**Runs MLflow (experimento `mlsec-model-a`):** 28 runs totales — baseline + v2 a v7.
+**Runs MLflow (experimento `mlsec-model-a`):** 40 runs — 20 históricos migrados de SQLite + 20 de notebooks + 1 del DAG.
 
 **Entregables:**
 
@@ -168,6 +168,7 @@ Entrenamos y refinamos el modelo de detección de ataques web a lo largo de 7 it
 - [x] `notebooks/experiments/csic2010_feature_analysis_v1.ipynb` → `v7.ipynb` ✅
 - [x] Métricas documentadas en `docs/model_a/` ✅
 - [x] MLflow runs loggeados con parámetros, métricas y threshold ✅
+- [x] `docker/docker-compose.yml` + DAG `dag_model_a` end-to-end ✅ (Phase 4.2)
 
 #### Phase 3.2 — Modelo B — UNSW-NB15 :material-progress-clock:
 
@@ -187,12 +188,13 @@ Entrenamos y refinamos el modelo de detección de ataques web a lo largo de 7 it
 - [ ] `src/mlsec/models/train_model_b.py`
 - [ ] Baseline documentado en `docs/model_b/`
 
-#### Phase 3.3 — MLflow tracking ✅ (parcial)
+#### Phase 3.3 — MLflow tracking ✅
 
-MLflow integrado desde v3 de Modelo A. Backend SQLite en `mlflow.db`. Experimento `mlsec-model-a` con 28 runs.
+MLflow integrado desde v3 de Modelo A. Backend: Postgres en Docker (MLflow 2.22.4 como servidor). Experimento `mlsec-model-a` con 40 runs totales — 20 históricos migrados de SQLite + runs de notebooks + run del DAG.
 
-- [x] MLflow instalado (v3.11.1) ✅
+- [x] MLflow servidor en Docker (puerto 5081) ✅
 - [x] Runs loggeados con parámetros, métricas y threshold ✅
+- [x] Script de migración SQLite → Postgres ✅
 - [ ] Modelo B runs pendientes
 
 ---
@@ -204,6 +206,11 @@ MLflow integrado desde v3 de Modelo A. Backend SQLite en `mlflow.db`. Experiment
 #### Phase 4.1 — Airflow local (dev) :material-progress-clock:
 
 Airflow instalado en entorno separado (`.venv-airflow`, Python 3.12) para no interferir con las dependencias de ML. Los DAGs invocan los scripts de `.venv` como subprocesos — Airflow actúa como orquestador puro.
+
+!!! warning "macOS ARM — fork deadlock"
+    `airflow-scheduler` en macOS ARM tiene un deadlock conocido con `StandardTaskRunner`
+    (usa `fork()` en procesos multi-threaded). Las tareas se cuelgan indefinidamente.
+    **Workaround:** mover a Docker (Phase 4.2).
 
 **Entregables:**
 
@@ -225,27 +232,74 @@ AIRFLOW_HOME="$(pwd)/airflow" .venv-airflow/bin/airflow scheduler 2>&1 | grep -v
 
 Ver [documentación de Airflow](airflow.md) para el detalle completo.
 
-#### Phase 4.2 — Docker (producción) :material-lock:
+#### Phase 4.2 — Docker (producción) ✅
 
-!!! info "MLflow pasa a Docker en esta fase"
-    En Phase 4.2, Airflow y MLflow se dockerizan para tener URLs estables entre servicios.
+**Estado:** funcionando (2026-04-13)
 
-    ```
-    services:
-      mlflow            ← tracking server (puerto 5000)
-      airflow-webserver ← UI de Airflow (puerto 8080)
-      airflow-scheduler
-      postgres          ← backend store compartido (MLflow + Airflow)
-    ```
+Docker Compose con todos los servicios, mounts de código y datos desde el host. El DAG `dag_model_a` corre end-to-end con artefactos guardados en MLflow.
 
-**Entregables:**
+**Servicios:**
 
-- [ ] `docker-compose.yml` con MLflow + Airflow + Postgres
-- [ ] Model registry en MLflow
+| Servicio | Puerto | Descripción |
+|---|---|---|
+| `postgres` | 5432 | Backend store compartido (Airflow + MLflow) |
+| `mlflow` | 5081 | Tracking server MLflow 2.22.4 |
+| `airflow-webserver` | 5080 | UI de Airflow (admin/admin) |
+| `airflow-scheduler` | — | Ejecuta los DAGs |
+
+**Primer run exitoso (2026-04-13):**
+
+```
+verify_data  →  preprocess  →  train  →  evaluate
+    ✅              ✅            ✅         ✅
+DagRun: successful — run_id=manual__2026-04-13T15:30:57
+```
+
+Métricas del run (LightGBM, threshold calibrado 0.2903):
+
+| Métrica | Valor |
+|---|---|
+| ROC-AUC | 0.9661 |
+| Recall | 0.9548 ✅ |
+| Precision | 0.7928 |
+| FP | 938 |
+
+MLflow run: `model-a-lightgbm-pipeline` → experimento `mlsec-model-a`, artefacto guardado.
+
+**Estructura de archivos Docker:**
+
+```
+docker/
+├── Dockerfile.airflow        # apache/airflow:2.10.4 + libgomp1 + deps ML
+├── Dockerfile.mlflow         # python:3.11-slim + mlflow 2.x
+├── docker-compose.yml        # todos los servicios
+├── init-dbs.sql             # crea DB mlflow en postgres
+└── migrate_mlflow.py        # script de migración SQLite → Postgres
+```
+
+**Cómo levantar:**
+
+```bash
+# Arrancar
+cd docker && docker compose up
+
+# Parar
+docker compose -f docker/docker-compose.yml down
+```
+
+**Migración de runs locales:**
+
+Los 20 runs históricos de `mlflow.db` (SQLite) fueron migrados al servidor Docker via `docker/migrate_mlflow.py`. Ver [documentación de Airflow](airflow.md) para detalles.
 
 ---
 
-### Phase 5 — API de inferencia :material-lock:
+### Phase 5 — API de inferencia :material-progress-clock:
+
+!!! note "Métricas de evaluación en datasets imbalanceados"
+    Para datasets imbalanceados (ratio 100:1 o mayor), Recall solo puede ser engañoso.
+    Accuracy da ~99% prediciendo solo la clase dominante.
+    Usar **ROC-AUC** (rank-based) o **F1-score** (balance de P y R).
+    Ver también: Matthews Correlation Coefficient, Precision-Recall curve.
 
 **Entregables:**
 
@@ -261,6 +315,6 @@ Ver [documentación de Airflow](airflow.md) para el detalle completo.
 Phase 1 ✅   Definición + descarga de datasets
 Phase 2 ✅   EDA ✅ → Preprocessing ✅
 Phase 3 🔄   Training — Modelo A ✅ concluido → Modelo B en progreso
-Phase 4 🔄   Airflow local ✅ dag_model_a → dag_model_b pendiente → Docker 🔒
+Phase 4 🔄   Airflow local ✅ dag_model_a ✅ → dag_model_b pendiente → Docker ✅
 Phase 5 🔒   API de inferencia
 ```

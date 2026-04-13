@@ -116,6 +116,49 @@ Los 936 FP son requests normales que el modelo no puede diferenciar de ataques c
 
 **Preprocessing oficial final:** `preprocess_csic_v4.py` → `features_v4.parquet` (23 features)
 
+### Docker — Primer run end-to-end (2026-04-13)
+
+Validamos el pipeline completo en Docker (`docker/docker-compose.yml`). El DAG `dag_model_a` corrió exitosamente con todos los servicios:
+
+```
+verify_data  →  preprocess  →  train  →  evaluate
+    ✅              ✅            ✅         ✅
+DagRun: successful
+```
+
+**Detalle del run:**
+
+- Dataset: `features_v4.parquet` (23 features)
+- Split: Train 42.745 / Val 9.160 / Test 9.160
+- Modelo: LightGBM, `min_recall_val=0.955`
+- Threshold calibrado: **0.2903**
+
+**Métricas (idénticas a v6/v7 — el mismo modelo):**
+
+| Métrica | Valor | Target |
+|---|---|---|
+| ROC-AUC | 0.9661 | — |
+| Recall | **0.9548 ✅** | ≥ 0.95 |
+| Precision | 0.7928 | ≥ 0.85 |
+| FP | 938 | ~630 |
+
+**Integración MLflow:**
+
+- Run `model-a-lightgbm-pipeline` loggeado en experimento `mlsec-model-a`
+- Artefacto del modelo guardado en `mlflow-artifacts` (volumen Docker compartido)
+- Params: `n_estimators=200`, `min_recall_val=0.955`, `threshold=0.2903`, `n_features=23`
+- Métricas: `test_recall`, `test_precision`, `test_roc_auc`, `test_fp`
+
+**Servicios activos:**
+
+| Servicio | Puerto | URL |
+|---|---|---|
+| Airflow webserver | 5080 | http://localhost:5080 |
+| MLflow tracking | 5081 | http://localhost:5081 |
+| Postgres | 5432 | backend compartido |
+
+---
+
 ### Siguiente paso
 
 → **Modelo B** — Network Attack Detection (UNSW-NB15). EDA completado, preprocessing y training pendientes.

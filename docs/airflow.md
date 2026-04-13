@@ -2,11 +2,72 @@
 
 Apache Airflow orquesta el pipeline de training: encadena preprocessing → training → evaluación y garantiza que cada paso se ejecute en orden, con logs y estado visible en la UI.
 
+Hay dos formas de correrlo: **local** (desarrollo, tiene limitaciones en macOS ARM) y **Docker** (producción, recomendado).
+
 ---
 
-## Setup local
+## Docker — Setup de producción
 
-### Entorno virtual
+### Estructura
+
+```
+docker/
+├── Dockerfile.airflow        # apache/airflow:2.10.4 + libgomp1 + deps ML
+├── Dockerfile.mlflow        # python:3.11-slim + mlflow 2.22.4
+├── docker-compose.yml       # todos los servicios
+├── init-dbs.sql            # crea DB mlflow en postgres
+└── migrate_mlflow.py       # migración runs SQLite → Postgres
+```
+
+### Servicios
+
+| Servicio | Puerto | Descripción |
+|---|---|---|
+| `postgres` | 5432 | Backend store compartido (Airflow + MLflow) |
+| `mlflow` | 5081 | Tracking server MLflow 2.22.4 |
+| `airflow-webserver` | 5080 | UI de Airflow (admin / admin) |
+| `airflow-scheduler` | — | Ejecuta los DAGs |
+
+### Cómo levantar
+
+```bash
+# Arrancar todo
+cd docker && docker compose up
+
+# Parar (preserva datos en volúmenes)
+docker compose -f docker/docker-compose.yml down
+
+# Limpiar todo incluyendo volúmenes
+docker compose -f docker/docker-compose.yml down -v
+```
+
+UI: `http://localhost:5080` (admin / admin)  
+MLflow: `http://localhost:5081`
+
+### Migración de runs MLflow
+
+Si hay runs en `mlflow.db` (SQLite local) y se quiere pasarlos al servidor Docker:
+
+```bash
+.venv/bin/python docker/migrate_mlflow.py
+```
+
+Esto migra: params, métricas, tags, run name, status. Los artefactos de modelo no se migran.
+
+### Rebuild después de cambios
+
+Si se modifica `requirements-ml.txt` o un Dockerfile:
+
+```bash
+docker compose -f docker/docker-compose.yml build [servicio]
+docker compose -f docker/docker-compose.yml up -d --force-recreate [servicio]
+```
+
+---
+
+## Local — Setup de desarrollo
+
+### Requisitos
 
 Airflow tiene un árbol de dependencias grande que puede chocar con scikit-learn y LightGBM. Se instala en un entorno separado:
 
@@ -23,33 +84,9 @@ PYTHON_VERSION=3.12
     El entorno `.venv-airflow` usa Python 3.12 exclusivamente para Airflow.
     Los scripts de ML siguen corriendo con `.venv` (Python 3.13).
 
-### Inicialización
+### Cómo levantar
 
-```bash
-AIRFLOW_HOME="$(pwd)/airflow" .venv-airflow/bin/airflow db migrate
-AIRFLOW_HOME="$(pwd)/airflow" .venv-airflow/bin/airflow users create \
-    --username admin --firstname Admin --lastname User \
-    --role Admin --email admin@mlsec.local --password admin
-```
-
-Esto crea la base de datos SQLite en `airflow/airflow.db` y el usuario admin.
-
-### Configuración aplicada
-
-En `airflow/airflow.cfg` se modificaron dos valores respecto al default:
-
-| Parámetro | Valor | Razón |
-|---|---|---|
-| `dags_folder` | `<root>/dags/` | Apunta a la carpeta del proyecto |
-| `load_examples` | `False` | Evita cargar los DAGs de ejemplo |
-| `workers` | `1` | macOS ARM — evita crashes de gunicorn |
-| `worker_class` | `gthread` | macOS ARM — evita crashes de gunicorn |
-
----
-
-## Cómo levantar
-
-Se necesitan **dos terminales** abiertas en la raíz del proyecto.
+Se necesitan **dos terminales**:
 
 **Terminal 1 — webserver:**
 ```bash
@@ -61,17 +98,28 @@ AIRFLOW_HOME="$(pwd)/airflow" .venv-airflow/bin/airflow webserver --port 5080 --
 AIRFLOW_HOME="$(pwd)/airflow" .venv-airflow/bin/airflow scheduler 2>&1 | grep -v "SIGSEGV\|Worker (pid"
 ```
 
-UI disponible en `http://localhost:5080` — usuario `admin`, contraseña `admin`.
+UI: `http://localhost:5080` (admin / admin)
 
-!!! warning "SIGSEGV en puerto 8793"
-    El scheduler levanta un servidor de logs interno (puerto 8793) que crashea en macOS ARM con gunicorn sync workers. Esto no afecta la ejecución de los DAGs — es ruido de fondo. Los logs de tareas se guardan en `airflow/logs/` y se pueden leer directamente desde ahí si la UI no los muestra.
+!!! warning "SIGSEGV en macOS ARM"
+    En macOS Apple Silicon, el scheduler levanta un servidor de logs interno (puerto 8793) que crashea con `fork()`. No afecta la ejecución de los DAGs. Para desarrollo local usar Docker (ver arriba) si los DAGs no corren.
+
+### Configuración aplicada
+
+En `airflow/airflow.cfg`:
+
+| Parámetro | Valor | Razón |
+|---|---|---|
+| `dags_folder` | `<root>/dags/` | Apunta a la carpeta del proyecto |
+| `load_examples` | `False` | Evita cargar los DAGs de ejemplo |
+| `workers` | `1` | macOS ARM — evita crashes de gunicorn |
+| `worker_class` | `gthread` | macOS ARM — evita crashes de gunicorn |
 
 ---
 
 ## DAG — dag_model_a
 
-**Archivo:** `dags/dag_model_a.py`  
-**Trigger:** manual (`schedule=None`)  
+**Archivo:** `dags/dag_model_a.py`
+**Trigger:** manual (`schedule=None`)
 **Tags:** `model-a`, `csic2010`
 
 ### Pipeline
@@ -82,28 +130,22 @@ verify_data → preprocess → train → evaluate
 
 | Tarea | Tipo | Qué hace |
 |---|---|---|
-| `verify_data` | PythonOperator | Verifica que `data/raw/csic2010/csic_database.csv` existe |
-| `preprocess` | BashOperator | Corre `preprocess_csic_v4.py` con `.venv` → genera `features_v4.parquet` |
-| `train` | BashOperator | Corre `train_model_a_pipeline.py` con MLflow logging, `min_recall_val=0.955` |
-| `evaluate` | BashOperator | Verifica shape del parquet generado, confirma pipeline completo |
+| `verify_data` | PythonOperator | Verifica que `csic_database.csv` existe |
+| `preprocess` | BashOperator | Corre `preprocess_csic_v4.py` → genera `features_v4.parquet` |
+| `train` | BashOperator | Corre `train_model_a_pipeline.py` con MLflow logging |
+| `evaluate` | BashOperator | Verifica shape del parquet generado |
 
 ### Cómo triggerear
 
 1. Entrá a `http://localhost:5080`
-2. Buscá `dag_model_a` en la lista
-3. Activá el toggle (el DAG arranca pausado)
+2. Buscá `dag_model_a`
+3. Activá el toggle (arranca pausado)
 4. Click en **▶ Trigger DAG**
-5. Monitoreá el progreso en la vista de Graph o Grid
+5. Monitoreá en Graph o Grid
 
-### Scripts invocados
+### Interpreter
 
-Los BashOperators corren con el intérprete de `.venv` (no de `.venv-airflow`):
-
-```python
-PYTHON = ROOT / ".venv" / "bin" / "python"
-```
-
-Airflow actúa como orquestador puro — no necesita scikit-learn ni LightGBM instalados.
+En Docker usa `python3` (MLSEC_PYTHON configurado en `docker-compose.yml`). En local usa `.venv/bin/python`.
 
 ### Exit codes
 
@@ -112,32 +154,37 @@ Airflow actúa como orquestador puro — no necesita scikit-learn ni LightGBM in
 | Exit code | Significado |
 |---|---|
 | `0` | Recall ≥ 0.95 en test — pipeline exitoso |
-| `1` | Recall < 0.95 — tarea marcada como fallida en Airflow |
-
-Si la tarea `train` falla, Airflow la marca en rojo y detiene el pipeline. El run queda loggeado en MLflow independientemente del resultado.
+| `1` | Recall < 0.95 — tarea marcada como fallida |
 
 ### Resultados en MLflow
 
-Cada ejecución del DAG loggea un run en el experimento `mlsec-model-a` con nombre `model-a-lightgbm-pipeline`:
+Cada ejecución del DAG loggea un run en el experimento `mlsec-model-a` con nombre `model-a-lightgbm-pipeline`.
 
-```bash
-mlflow ui --backend-store-uri sqlite:///mlflow.db
-# → http://localhost:5000
-```
+En Docker: `http://localhost:5081` → experimento `mlsec-model-a`  
+En local: `mlflow ui --backend-store-uri sqlite:///mlflow.db`
 
 ---
 
 ## Estructura de archivos
 
 ```
+docker/
+├── Dockerfile.airflow        # imagen con ML deps + libgomp1
+├── Dockerfile.mlflow        # python:3.11-slim + mlflow 2.22.4
+├── docker-compose.yml       # servicios
+├── init-dbs.sql            # DB mlflow en postgres
+└── migrate_mlflow.py       # migración runs
+
 dags/
-└── dag_model_a.py              ← DAG de Airflow
+└── dag_model_a.py          ← DAG de Airflow
 
 src/mlsec/models/
 └── train_model_a_pipeline.py   ← Script de training para el DAG
 
-airflow/                        ← Runtime de Airflow (no se versiona excepto airflow.cfg)
-├── airflow.cfg                 ← Configuración (versionada)
-├── airflow.db                  ← SQLite DB (ignorada por git)
-└── logs/                       ← Logs de tareas (ignorados por git)
+airflow/                    ← Runtime local (no versionado)
+├── airflow.cfg
+├── airflow.db
+└── logs/
+
+mlflow.db                   ← SQLite local (no versionado)
 ```
