@@ -42,6 +42,7 @@ from mlsec.api.model_loader import (
     THRESHOLD as DEFAULT_THRESHOLD,
     MODEL_VERSION,
 )
+from mlsec.api.preprocessing import scale_continuous
 
 # ---------------------------------------------------------------------------
 # Estado global — se carga una sola vez al arrancar
@@ -148,8 +149,9 @@ async def predict(req: PredictRequest):
 
     import numpy as np
 
-    # LightGBM no requiere scaling — es invariante a transformaciones monótonas
     features = np.array([req.to_array()], dtype="float32")
+    # Aplicar StandardScaler (mismo preprocesamiento que en training)
+    features = scale_continuous(features, FEATURE_NAMES)
     proba = float(model.predict_proba(features)[:, 1][0])
     prediction = int(proba >= threshold)
 

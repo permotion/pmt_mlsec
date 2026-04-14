@@ -78,8 +78,11 @@ def load_model_from_mlflow(
 
     # Encontrar el run
     if run_id is None:
+        exp = client.get_experiment_by_name(experiment_name)
+        if exp is None:
+            raise RuntimeError(f"Experimento '{experiment_name}' no encontrado en MLflow")
         runs = client.search_runs(
-            experiment_names=[experiment_name],
+            experiment_ids=[exp.experiment_id],
             filter_string="attributes.status = 'FINISHED'",
             order_by=["metrics.test_recall DESC"],
         )

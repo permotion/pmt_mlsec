@@ -309,13 +309,16 @@ Los 20 runs históricos de `mlflow.db` (SQLite) fueron migrados al servidor Dock
 | `/features` | GET | Lista de 23 features esperadas |
 | `/predict` | POST | Clasificación: prediction + probability |
 
+**Estado (2026-04-14):** API funcionando en puerto 5082. Modelo cargado desde MLflow. **Problema abierto:** `scale_pos_weight` en training sesga las probabilidades absolutas — un request normal puede devolver `probability=0.99`. La `prediction` (0/1) es correcta para la decisión binaria, pero la probabilidad absoluta no es confiable. Ver [API](api.md).
+
 **Entregables:**
 
 - [x] `src/mlsec/api/main.py` — FastAPI app ✅
 - [x] `src/mlsec/api/models.py` — Pydantic schemas ✅
 - [x] `src/mlsec/api/model_loader.py` — carga desde pickle o MLflow ✅
-- [x] `docker/Dockerfile.api` — imagen Docker ✅
-- [x] `docker/requirements-api.txt` — dependencias ✅
+- [x] `src/mlsec/api/preprocessing.py` — StandardScaler con parámetros hardcodeados ✅
+- [x] `docker/Dockerfile.api` — imagen Docker (python:3.11-slim + libgomp1) ✅
+- [x] `docs/api.md` — documentación completa de endpoints y features ✅
 - [ ] Logging de predicciones a archivo/DB
 - [ ] Tests de integración
 
