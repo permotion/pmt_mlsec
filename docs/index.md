@@ -40,7 +40,7 @@ Dos modelos de clasificación binaria para detección offline de ataques:
     **Modelo A (CSIC 2010):** 7 iteraciones de feature engineering.
     LightGBM: Recall 0.954 ✅ / Precision 0.793 ❌ (target 0.85) / ROC-AUC 0.968.
     Análisis post-training completo documentado: [Model A — Análisis post-training](model_a_analysis.md).
-    Ver también: [scripts de evaluación](model_a_analysis.md#5-evaluación-de-requests-reales-via-script).
+    Ver también: [scripts de evaluación](model_a_analysis.md).
 
 !!! info "Siguiente paso — Modelo B (UNSW-NB15)"
     EDA completo. Preprocessing y training en progreso.
