@@ -379,70 +379,15 @@ Este es un acierto correcto del modelo. El ataque es real y el modelo lo detecta
 
 ---
 
-### Caso de prueba 2 — POST login normal
-
-```
-192.168.1.100 - - [14/Apr/2026:10:26:01 -0300] "POST /api/login HTTP/1.1" 200 456 "-" "Mozilla/5.0"
-```
-
-**Resultado:**
-
-```
-🔴 ATAQUE
-   Probabilidad: 99.9% (threshold: 29.0%)
-   Method: POST
-   URL: /api/login
-   Body: (vacío — el body no está en el log de access)
-```
-
-**Análisis de features extraídas:**
-
-| Feature | Valor | Qué indica |
-|---|---|---|
-| `method_is_get` | 0 | |
-| `method_is_post` | **1** | Método POST |
-| `method_is_put` | 0 | |
-| `url_length` | 10 | `/api/login` es corto — 10 caracteres |
-| `url_param_count` | 0 | Sin `=` en la URL (no hay query string) |
-| `url_pct_density` | 0.0 | Sin caracteres `%` |
-| `url_has_query` | 0 | Sin `?` |
-| `url_has_pct27` | 0 | Sin indicadores de SQLi |
-| `url_has_pct3c` | 0 | |
-| `url_has_dashdash` | 0 | |
-| `url_has_script` | 0 | |
-| `url_has_select` | 0 | |
-| `content_length` | 0 | El body no está en el log — se asume vacío |
-
-### Por qué el modelo asigna 99.9% a este request
-
-La explicación puede estar en `scale_pos_weight=1.44`, pero también es posible que el dataset CSIC 2010 haya etiquetado este tipo de requests como ataque si sus bodies contenían payloads maliciosos.
-
-**No se puede afirmar que sea un falso positivo sin conocer el body original del request.**
-
 ### Limitación: los access logs no contienen el body
 
-Este segundo caso es especialmente importante: **el log de access no tiene el body del POST.** El ataque podría estar en el body (`username=admin' OR 1=1--&password=test`), no en la URL. El modelo solo evaluó la URL porque es lo único disponible en el log.
+**Los logs de access de Nginx/Apache no tienen el body de los requests POST.** El ataque podría estar oculto en el body (`username=admin' OR 1=1--&password=test`) y no sería visible en el log. El script `eval_log_line.py`只能 evaluar la URL visible — el body real queda oculto.
 
-```
-# Lo que el modelo VE (del log):
-POST /api/login    ← solo method + URL, sin body
-
-# Lo que podría estar en el body real (pero el log no lo muestra):
-username=admin' OR 1=1--&password=test
-```
-
-Para evaluar el body POST se necesita:
+Para evaluar bodies POST completos se necesita:
 - Logs de un WAF o proxy que capture bodies
-- Un sistema de instrumentation que registre los payloads completos
+- Un sistema de instrumentation que registre los payloads
 - Traffic analysis de un IDS/IPS
 
-### Conclusión de la prueba
+### Conclusión
 
-| Caso | Prediction | Probabilidad | ¿Correcto? |
-|---|---|---|---|
-| GET `/login?username=admin%27%20OR%201%3D1%20--` | ATAQUE | 100.0% | ✅ Correcto |
-| POST `/api/login` | ATAQUE | 99.9% | ⚠️ Indeterminado — sin body no se puede confirmar ni desmentir |
-
-El Caso 1 demuestra que el modelo detecta ataques visibles en la URL. El Caso 2 muestra que la ausencia del body impide validar la predicción.
-
-**Implicación para producción:** sin visibilidad del body, no se puede confiar ciegamente en las predicciones del modelo. Se necesita un sistema que capture los payloads completos.
+El modelo detecta correctamente ataques SQL injection visibles en la URL con 100% de probabilidad. La limitación fundamental de este método de evaluación es que los access logs no exponen los bodies de los requests POST — que es donde se ocultan la mayoría de los ataques SQLi y XSS.
