@@ -38,9 +38,9 @@ Dos modelos de clasificación binaria para detección offline de ataques:
 
 !!! warning "Phase 3 — Training + MLflow — Modelo A en pausa"
     **Modelo A (CSIC 2010):** 7 iteraciones de feature engineering.
-    LightGBM: Recall 0.953 ✅ / Precision 0.793 ❌ (target 0.85) / ROC-AUC 0.968.
-    Techo práctico identificado — cerrar el gap requiere un enfoque diferente.
-    Decisión: avanzar a Modelo B y retomar si es necesario.
+    LightGBM: Recall 0.954 ✅ / Precision 0.793 ❌ (target 0.85) / ROC-AUC 0.968.
+    Análisis post-training completo documentado: [Model A — Análisis post-training](model_a_analysis.md).
+    Ver también: [scripts de evaluación](model_a_analysis.md#5-evaluación-de-requests-reales-via-script).
 
 !!! info "Siguiente paso — Modelo B (UNSW-NB15)"
     EDA completo. Preprocessing y training en progreso.
