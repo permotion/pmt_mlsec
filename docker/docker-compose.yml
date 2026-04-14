@@ -113,6 +113,23 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
+  # nginx — proxy HTTP para artefactos de MLflow
+  # Expone los ficheros de /opt/mlflow/artifacts/ por HTTP en puerto 5083
+  # así el cliente local puede descargar sin acceder al volumen interno de Docker.
+  # ---------------------------------------------------------------------------
+  nginx-artifacts:
+    image: nginx:alpine
+    ports:
+      - "5083:80"
+    volumes:
+      - mlflow-artifacts:/usr/share/nginx/html:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
   # FastAPI — inference API
   # UI de docs: http://localhost:5000/docs
   # ---------------------------------------------------------------------------
@@ -122,9 +139,12 @@ services:
       dockerfile: docker/Dockerfile.api
     environment:
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:5000}
+      MLFLOW_ARTIFACT_PROXY: ${MLFLOW_ARTIFACT_PROXY:-http://host.docker.internal:5083}
       HOST: 0.0.0.0
       PORT: "5000"
       PYTHONPATH: /app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "5082:5000"
     volumes:

@@ -169,6 +169,7 @@ Entrenamos y refinamos el modelo de detección de ataques web a lo largo de 7 it
 - [x] Métricas documentadas en `docs/model_a/` ✅
 - [x] MLflow runs loggeados con parámetros, métricas y threshold ✅
 - [x] `docker/docker-compose.yml` + DAG `dag_model_a` end-to-end ✅ (Phase 4.2)
+- [x] Análisis post-training documentado en `docs/model_a_analysis.md` ✅
 
 #### Phase 3.2 — Modelo B — UNSW-NB15 :material-progress-clock:
 

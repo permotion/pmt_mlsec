@@ -95,8 +95,22 @@ def load_model_from_mlflow(
 
     # Descargar el artefacto a un directorio temporal
     artifact_uri = client.get_run(run_id).info.artifact_uri
+
+    # MLflow devuelve file:///opt/mlflow/artifacts/... (ruta interna del contenedor).
+    # Esto solo es accesible desde dentro del contenedor mlflow.
+    # Lo convertimos a la URL del proxy nginx (disponible desde cualquier contenedor
+    # en la misma red Docker, y expuesto al host en puerto 5083).
+    ARTIFACT_PROXY = os.environ.get(
+        "MLFLOW_ARTIFACT_PROXY", "http://nginx-artifacts:80"
+    )
+    if "opt/mlflow/artifacts" in artifact_uri:
+        # Quitar el prefijo /opt/mlflow/artifacts/ (con o sin file://)
+        artifact_path = artifact_uri.replace("file:///opt/mlflow/artifacts/", "").replace("/opt/mlflow/artifacts/", "")
+        artifact_uri = f"{ARTIFACT_PROXY}/{artifact_path}"
+        print(f"Artefacto convertido a HTTP: {artifact_uri}")
+
     local_path = mlflow.artifacts.download_artifacts(
-        artifact_uri=f"{artifact_uri}/model",
+        artifact_uri=artifact_uri,
         dst_path="/tmp/mlflow_model",
     )
 
