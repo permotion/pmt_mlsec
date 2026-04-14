@@ -70,7 +70,7 @@ El modelo detecta correctamente el ataque. La URL contiene `%27%20OR%201%3D1%20-
 | `url_has_pct27` | 1 | `%27` (comilla simple codificada) — señal directa de SQLi |
 | `url_has_dashdash` | 1 | `--` (comentario SQL) — técnica común para truncate queries |
 
-### Caso 2 — POST login normal ❌ Falso positivo
+### Caso 2 — POST login sin body visible ⚠️ Indeterminado
 
 ```
 192.168.1.100 - - [14/Apr/2026:10:26:01 -0300] "POST /api/login HTTP/1.1" 200 456 "-" "Mozilla/5.0"
@@ -78,13 +78,23 @@ El modelo detecta correctamente el ataque. La URL contiene `%27%20OR%201%3D1%20-
 
 **Resultado:** 🔴 **ATAQUE** — Probabilidad: 99.9%
 
-Este es un **falso positivo**. El request es perfectamente legítimo — un POST a `/api/login`. El modelo devuelve 99.9% de probabilidad de ataque por el efecto de `scale_pos_weight=1.44` usado en training, que distorsiona las probabilidades hacia la clase positiva.
+**No se puede afirmar que sea un falso positivo.** La URL `/api/login` parece inocente, pero:
+
+- El log de access **no muestra el body del POST** — que es donde típicamente va el payload de un SQL injection (`username=admin' OR 1=1--&password=test`)
+- El modelo ve: method=POST, URL corta=`/api/login`, sin indicadores visibles de ataque
+- El dataset CSIC 2010 tiene el 41% de requests como ataques, distribuidos en todo tipo de URLs
+
+El modelo detecta 99.9% de probabilidad de ataque. Esto puede ser:
+- **Correcto**: el body real contenía un ataque (el log no lo muestra)
+- **Distorsión de `scale_pos_weight`**: el modelo está sesgado hacia predecir ataque por el reweighting
 
 ### Conclusión de la prueba
 
-El modelo detecta ataques reales con alta probabilidad (100%) pero también marca requests legítimos con probabilidad igualmente alta (99.9%). **No existe una zona de incertidumbre** — el modelo asigna probabilidades extremas tanto a ataques como a normales.
+El Caso 1 demuestra que el modelo detecta ataques **visibles en la URL** con 100% de probabilidad. El Caso 2 muestra que el modelo también marca requests donde **no tenemos visibilidad del body**.
 
-**Implicación para producción:** el modelo sirve como herramienta de triaje para revisión manual, no como decisor automático de bloqueo sin una segunda capa de validación.
+**Implicación para producción:** sin el body completo, no se puede validar si una predicción es verdadera o falsa. Se necesita un sistema que capture los payloads de los requests para usar este modelo de forma confiable.
+
+Ver el análisis completo en [Model A — Análisis post-training](model_a_analysis.md).
 
 Ver el análisis completo en [Model A — Análisis post-training](model_a_analysis.md).
 

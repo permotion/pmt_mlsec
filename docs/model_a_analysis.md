@@ -413,35 +413,25 @@ Este es un acierto correcto del modelo. El ataque es real y el modelo lo detecta
 | `url_has_select` | 0 | |
 | `content_length` | 0 | El body no está en el log — se asume vacío |
 
-**Este es un FALSO POSITIVO clásico.** El request es perfectamente legítimo — un POST a `/api/login`. No contiene indicadores de ataque. ¿Por qué el modelo devuelve 99.9%?
+### Por qué el modelo asigna 99.9% a este request
 
-### Por qué el modelo asigna 99.9% a un request normal
+La explicación puede estar en `scale_pos_weight=1.44`, pero también es posible que el dataset CSIC 2010 haya etiquetado este tipo de requests como ataque si sus bodies contenían payloads maliciosos.
 
-La explicación está en `scale_pos_weight=1.44`:
-
-1. **El modelo fue entrenado con `scale_pos_weight=1.44`** — esto le dice a LightGBM que penalice 1.44x más los errores en la clase positiva (ataque) que en la negativa (normal).
-
-2. **Como resultado, las probabilidades absolutas están distorsionadas.** El modelo no estima `P(ataque | features)` de forma calibrada — sobre-estima la probabilidad de ataque en general.
-
-3. **Cualquier request POST activo (no GET pasivo)** se parece a los ataques de CSIC 2010 que eran en su mayoría POST. El modelo aprendió que "POST → probablemente ataque" no porque sea semánticamente cierto, sino porque en el dataset de entrenamiento había muchos más ataques en POST que en GET.
-
-4. **Con threshold 0.2903, cualquier request con `P(ataque) >= 29%` se marca como ataque.** Dado que `scale_pos_weight` infla las probabilidades, incluso un POST normal recibe probabilidad alta.
-
-5. **El hecho de que el threshold calibrado sea tan bajo (0.29)** confirma que el modelo necesita un umbral muy permisivo para alcanzar Recall ≥ 0.95. Un threshold alto (ej: 0.80) reduciría los FP dramáticamente pero también reduciría Recall.
+**No se puede afirmar que sea un falso positivo sin conocer el body original del request.**
 
 ### Limitación: los access logs no contienen el body
 
-Este segundo caso es especialmente importante por otra razón: **el log de access no tiene el body del POST.** En un sistema real, el ataque podría estar en el body (`username=admin' OR 1=1--`), no en la URL. El modelo solo evaluó la URL porque es lo único disponible en el log.
+Este segundo caso es especialmente importante: **el log de access no tiene el body del POST.** El ataque podría estar en el body (`username=admin' OR 1=1--&password=test`), no en la URL. El modelo solo evaluó la URL porque es lo único disponible en el log.
 
 ```
 # Lo que el modelo VE (del log):
 POST /api/login    ← solo method + URL, sin body
 
-# Lo que podría estar pasando en el body real (pero el log no lo muestra):
+# Lo que podría estar en el body real (pero el log no lo muestra):
 username=admin' OR 1=1--&password=test
 ```
 
-Esto es una limitación inherente de evaluar desde logs de access. Para evaluar el body POST, necesitarías:
+Para evaluar el body POST se necesita:
 - Logs de un WAF o proxy que capture bodies
 - Un sistema de instrumentation que registre los payloads completos
 - Traffic analysis de un IDS/IPS
@@ -451,11 +441,8 @@ Esto es una limitación inherente de evaluar desde logs de access. Para evaluar 
 | Caso | Prediction | Probabilidad | ¿Correcto? |
 |---|---|---|---|
 | GET `/login?username=admin%27%20OR%201%3D1%20--` | ATAQUE | 100.0% | ✅ Correcto |
-| POST `/api/login` | ATAQUE | 99.9% | ❌ Falso positivo |
+| POST `/api/login` | ATAQUE | 99.9% | ⚠️ Indeterminado — sin body no se puede confirmar ni desmentir |
 
-**El modelo detecta ataques reales con alta probabilidad, pero también clasifica requests legítimos como ataques con probabilidad casi igual de alta.** Esto confirma lo documentado en la sección de FP: el modelo no tiene una zona de "incertidumbre" — asigna probabilidades extremas (casi siempre >0.70) tanto a ataques como a normales.
+El Caso 1 demuestra que el modelo detecta ataques visibles en la URL. El Caso 2 muestra que la ausencia del body impide validar la predicción.
 
-**Para uso en producción**, este modelo sirve como:
-- **Herramienta de triaje**: prioriza requests para revisión manual
-- **Primera capa de detección**: atrapa ataques evidentes (como el Caso 1)
-- **No sirve como decisor automático de bloqueo** sin una segunda capa de validación, porque generaría muchos falsos positivos en tráfico legítimo
+**Implicación para producción:** sin visibilidad del body, no se puede confiar ciegamente en las predicciones del modelo. Se necesita un sistema que capture los payloads completos.
