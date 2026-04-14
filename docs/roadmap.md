@@ -330,7 +330,7 @@ Los 20 runs históricos de `mlflow.db` (SQLite) fueron migrados al servidor Dock
 ```
 Phase 1 ✅   Definición + descarga de datasets
 Phase 2 ✅   EDA ✅ → Preprocessing ✅
-Phase 3 🔄   Training — Modelo A ✅ concluido → Modelo B en progreso
-Phase 4 🔄   Airflow local ✅ dag_model_a ✅ → dag_model_b pendiente → Docker ✅
-Phase 5 🔄   API de inferencia
+Phase 3 ✅   Training — Modelo A ✅ concluido → Modelo B en progreso
+Phase 4 ✅   Airflow ✅ dag_model_a ✅ → Docker ✅
+Phase 5 ✅   API de inferencia ✅
 ```
