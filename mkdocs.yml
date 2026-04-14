@@ -48,6 +48,7 @@ nav:
     - v5 — Calibración threshold: model_a/v5.md
     - v6 — content_param_density: model_a/v6.md
     - v7 — Latin-1 encoding: model_a/v7.md
+    - Análisis post-training: model_a_analysis.md
   - Modelo B:
     - Estado actual: model_b/index.md
   - Experimentos (convenciones): experiments.md
