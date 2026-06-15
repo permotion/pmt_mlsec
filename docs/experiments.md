@@ -1,134 +1,134 @@
-# Experimentos
+# Experiments
 
-Convenciones del proceso de experimentación. Los experimentos de cada modelo están documentados en sus propias secciones:
+Conventions of the experimentation process. The experiments for each model are documented in their own sections:
 
-- [Modelo A — Web Attack Detection](model_a/index.md)
-- [Modelo B — Network Attack Detection](model_b/index.md)
+- [Model A — Web Attack Detection](model_a/index.md)
+- [Model B — Network Attack Detection](model_b/index.md)
 
 ---
 
-## Diferencia entre EDA, Preprocessing y Experimento
+## Difference between EDA, Preprocessing, and Experiment
 
-| Etapa | Pregunta que responde | Punto de partida | Vive en |
+| Stage | Question it answers | Starting point | Lives in |
 |---|---|---|---|
-| **EDA** | ¿Qué hay en los datos? ¿Qué features construir? | Sin modelo | `notebooks/eda/` |
-| **Preprocessing** | ¿Cómo transformo los datos crudos en features? | Decisiones del EDA | `src/mlsec/data/` |
-| **Experimento** | ¿Por qué falla el modelo? ¿Cómo mejorarlo? | Modelo entrenado con resultados conocidos | `notebooks/experiments/` |
+| **EDA** | What's in the data? What features to build? | Without model | `notebooks/eda/` |
+| **Preprocessing** | How do I transform raw data into features? | EDA decisions | `src/mlsec/data/` |
+| **Experiment** | Why does the model fail? How to improve it? | Trained model with known results | `notebooks/experiments/` |
 
-El EDA explora los datos sin un modelo previo. El experimento itera sobre un modelo ya entrenado con resultados insatisfactorios — la pregunta no es "¿qué hay en los datos?" sino "¿por qué el modelo falla y cómo lo mejoramos?".
+EDA explores the data without a prior model. The experiment iterates on an already trained model with unsatisfactory results — the question is not "what's in the data?" but "why does the model fail and how do we improve it?".
 
 ---
 
-## Esquema de versiones
+## Versioning scheme
 
-Cada iteración genera una versión numerada del notebook de análisis. El notebook anterior se conserva con sus outputs — no se sobreescribe. Esto permite comparar exactamente qué cambió entre versiones y por qué.
+Each iteration generates a numbered version of the analysis notebook. The previous notebook is kept with its outputs — it is not overwritten. This allows exact comparison of what changed between versions and why.
 
-### Relación entre notebooks, preprocessing y parquets
+### Relationship between notebooks, preprocessing, and parquets
 
-Los números de versión de notebooks y scripts de preprocessing **no son 1:1**. Son ciclos independientes:
+The version numbers of notebooks and preprocessing scripts **are not 1:1**. They are independent cycles:
 
-- El **notebook** sube de versión en cada iteración de experimentación, aunque no haya features nuevas
-- El **script de preprocessing** sube de versión solo cuando se decide incorporar features nuevas al pipeline oficial
-- Los notebooks pueden construir features **en memoria** para probarlas antes de agregarlas al preprocessing
+- The **notebook** bumps its version in each experimentation iteration, even if there are no new features
+- The **preprocessing script** bumps its version only when it is decided to incorporate new features into the official pipeline
+- Notebooks can build features **in memory** to test them before adding them to preprocessing
 
-Flujo típico:
+Typical flow:
 
 ```
-notebook vN          →  prueba features candidatas en memoria
+notebook vN          →  tests candidate features in memory
     │
-    ├── features sin señal → se descartan, no hay nuevo preprocessing
+    ├── features without signal → are discarded, no new preprocessing
     │
-    └── features con señal → se consolidan en preprocess_csic_v(N+1).py
-                                  → genera features_v(N+1).parquet
-                                  → próximo notebook parte de ese parquet
+    └── features with signal → are consolidated in preprocess_csic_v(N+1).py
+                                  → generates features_v(N+1).parquet
+                                  → next notebook starts from that parquet
 ```
 
-Ejemplo concreto — de v2 a v3:
+Concrete example — from v2 to v3:
 
 ```
-v2 notebook  →  validó url_pct_density y url_param_count con features_v2.parquet
+v2 notebook  →  validated url_pct_density and url_param_count with features_v2.parquet
                     ↓
-             preprocess_csic_v2.py genera features_v2.parquet (17 features)
+             preprocess_csic_v2.py generates features_v2.parquet (17 features)
                     ↓
-v3 notebook  →  construye content_pct_density en memoria sobre features_v2.parquet
-                    ↓ (señal insuficiente sola, pero se incorpora igual por mejora consistente)
-             preprocess_csic_v3.py (pendiente) generará features_v3.parquet (19 features)
+v3 notebook  →  builds content_pct_density in memory on top of features_v2.parquet
+                    ↓ (insufficient signal alone, but incorporated anyway due to consistent improvement)
+             preprocess_csic_v3.py (pending) will generate features_v3.parquet (19 features)
                     ↓
-v4 notebook  →  construirá url_path_depth, url_query_length, url_has_query en memoria
+v4 notebook  →  will build url_path_depth, url_query_length, url_has_query in memory
 ```
 
-Los parquets generados viven en `data/processed/csic2010/`:
+Generated parquets live in `data/processed/csic2010/`:
 
 ```
 data/processed/csic2010/
-├── features.parquet       ← 15 features — generado por preprocess_csic_v1.py
-└── features_v2.parquet    ← 17 features — generado por preprocess_csic_v2.py
+├── features.parquet       ← 15 features — generated by preprocess_csic_v1.py
+└── features_v2.parquet    ← 17 features — generated by preprocess_csic_v2.py
 ```
 
-### Notebooks de experimentos — CSIC 2010
+### Experiment Notebooks — CSIC 2010
 
-| Versión | Notebook | Parquet de entrada | Estado | Qué hizo |
+| Version | Notebook | Input Parquet | Status | What it did |
 |---|---|---|---|---|
-| v1 | `csic2010_feature_analysis_v1.ipynb` | `features.parquet` | ✅ ejecutado | Feature importance + análisis de FP + 4 features candidatas evaluadas |
-| v2 | `csic2010_feature_analysis_v2.ipynb` | `features_v2.parquet` | ✅ ejecutado | 4 modelos re-entrenados con features_v2, comparativa vs v1 |
-| v3 | `csic2010_feature_analysis_v3.ipynb` | `features_v2.parquet` + 2 en memoria | ✅ ejecutado | Primera integración MLflow + `content_pct_density` → Precision +0.011 a +0.016, FP -88 |
-| v4 | `csic2010_feature_analysis_v4.ipynb` | `features_v2.parquet` + 3 en memoria | ✅ ejecutado | `url_path_depth`, `url_query_length`, `url_has_query` → Precision +0.090, FP -567, ROC-AUC 0.966 |
+| v1 | `csic2010_feature_analysis_v1.ipynb` | `features.parquet` | ✅ executed | Feature importance + FP analysis + 4 candidate features evaluated |
+| v2 | `csic2010_feature_analysis_v2.ipynb` | `features_v2.parquet` | ✅ executed | 4 models re-trained with features_v2, comparison vs v1 |
+| v3 | `csic2010_feature_analysis_v3.ipynb` | `features_v2.parquet` + 2 in memory | ✅ executed | First MLflow integration + `content_pct_density` → Precision +0.011 to +0.016, FP -88 |
+| v4 | `csic2010_feature_analysis_v4.ipynb` | `features_v2.parquet` + 3 in memory | ✅ executed | `url_path_depth`, `url_query_length`, `url_has_query` → Precision +0.090, FP -567, ROC-AUC 0.966 |
 
-### Scripts de preprocessing — CSIC 2010
+### Preprocessing Scripts — CSIC 2010
 
-| Versión | Script | Parquet generado | Features | Decidido en |
+| Version | Script | Generated Parquet | Features | Decided in |
 |---|---|---|---|---|
-| v1 | `preprocess_csic_v1.py` | `features.parquet` | 15 + label | EDA original |
+| v1 | `preprocess_csic_v1.py` | `features.parquet` | 15 + label | Original EDA |
 | v2 | `preprocess_csic_v2.py` | `features_v2.parquet` | 17 + label | v1 notebook — `url_pct_density`, `url_param_count` |
 | v3 | `preprocess_csic_v3.py` | `features_v3.parquet` | 22 + label | v3+v4 notebooks — `content_pct_density`, `content_param_count`, `url_path_depth`, `url_query_length`, `url_has_query` |
 
 ---
 
-## Preprocessing oficial vs Preprocessing exploratorio
+## Official Preprocessing vs Exploratory Preprocessing
 
-El término "Preprocessing" en este proyecto tiene dos formas que **no son intercambiables**:
+The term "Preprocessing" in this project has two forms that **are not interchangeable**:
 
-| | Preprocessing oficial | Preprocessing exploratorio |
+| | Official Preprocessing | Exploratory Preprocessing |
 |---|---|---|
-| Dónde vive | `src/mlsec/data/preprocess_csic_vN.py` | Dentro del notebook de experimento |
-| Output | Parquet estable en `data/processed/` | Nada — las features existen solo en memoria |
-| Cuándo se crea | Después de validar las features | Para probar features candidatas antes de comprometerse |
-| Es reproducible | Sí — cualquiera ejecuta el script y obtiene el mismo resultado | Solo en el contexto del notebook |
-| Puede descartarse | No — si se creó, hubo una decisión de incorporar | Sí — si no hay señal, no hay nuevo script |
+| Where it lives | `src/mlsec/data/preprocess_csic_vN.py` | Inside the experiment notebook |
+| Output | Stable parquet in `data/processed/` | Nothing — features exist only in memory |
+| When it's created | After validating features | To test candidate features before committing |
+| Is reproducible | Yes — anyone runs the script and gets the same result | Only in the notebook's context |
+| Can be discarded | No — if created, there was a decision to incorporate | Yes — if no signal, no new script |
 
-### Flujo del Preprocessing exploratorio — 7 pasos
+### Exploratory Preprocessing Flow — 7 steps
 
-Un experimento de feature engineering sigue siempre el mismo flujo:
+A feature engineering experiment always follows the same flow:
 
-1. **Cargar el parquet más reciente** — la base de features estables ya validadas
-2. **Analizar los errores del modelo anterior** — ¿qué tienen en común los FP? ¿Hay un patrón estructural?
-3. **Identificar la subpoblación relevante** — si la señal esperada es de body POST, analizar solo POSTs; si es de URL GET, analizar solo GETs
-4. **Calcular correlaciones en la subpoblación** — verificar que la feature candidata tiene correlación significativa con el label *en esa subpoblación*
-5. **Construir la feature en memoria** — `df["nueva_feature"] = ...` — no se escribe nada a disco
-6. **Entrenar el modelo con la feature nueva y medir métricas** — comparar Recall, Precision, FP y ROC-AUC contra el resultado anterior
-7. **Concluir: ¿hay señal?** — si las métricas mejoran de forma consistente → incorporar al preprocessing oficial (nuevo script → nuevo parquet); si no hay mejora → descartar, no hay nuevo script
+1. **Load the latest parquet** — the base of stable, already validated features
+2. **Analyze the previous model's errors** — what do FPs have in common? Is there a structural pattern?
+3. **Identify the relevant subpopulation** — if expected signal is from POST body, analyze only POSTs; if from GET URL, analyze only GETs
+4. **Calculate correlations in the subpopulation** — verify the candidate feature has significant correlation with the label *in that subpopulation*
+5. **Build the feature in memory** — `df["new_feature"] = ...` — nothing is written to disk
+6. **Train the model with the new feature and measure metrics** — compare Recall, Precision, FP, and ROC-AUC against previous result
+7. **Conclude: is there signal?** — if metrics improve consistently → incorporate into official preprocessing (new script → new parquet); if no improvement → discard, no new script
 
-### Qué significa "señal suficiente" en el paso 7
+### What "sufficient signal" means in step 7
 
-No hay un umbral fijo, pero se buscan estas condiciones:
+There is no fixed threshold, but these conditions are sought:
 
-- **Precision mejora** — el FP count baja con el threshold mantenido
-- **Recall se mantiene** — el criterio ≥ 0.95 no se rompe
-- **ROC-AUC sube** — la capacidad de separación total mejora
-- **Consistencia entre algoritmos** — si solo un modelo mejora y los otros no, la señal puede ser ruido de overfitting
+- **Precision improves** — FP count drops while maintaining threshold
+- **Recall is maintained** — the ≥ 0.95 criterion is not broken
+- **ROC-AUC goes up** — overall separation capacity improves
+- **Consistency across algorithms** — if only one model improves and others don't, the signal might be overfitting noise
 
-Si la mejora es marginal pero consistente (ej: v3 `content_pct_density` → Precision +0.009 a +0.016 en todos los modelos), se incorpora igual. Si no hay mejora en ningún modelo, la feature se descarta sin dejar rastro en el código.
+If the improvement is marginal but consistent (e.g., v3 `content_pct_density` → Precision +0.009 to +0.016 across all models), it is incorporated anyway. If there is no improvement in any model, the feature is discarded without leaving a trace in the code.
 
-El resultado del paso 7 determina si el notebook genera un nuevo `preprocess_csic_vN.py` o si el trabajo termina sin cambios al pipeline oficial.
+The result of step 7 determines whether the notebook generates a new `preprocess_csic_vN.py` or if the work ends without changes to the official pipeline.
 
 ---
 
-## Comparación de métricas vs versión anterior
+## Metric comparison vs previous version
 
-En cada notebook de experimento, los resultados de la versión anterior se guardan en un diccionario Python al inicio del notebook:
+In each experiment notebook, the results of the previous version are saved in a Python dictionary at the start of the notebook:
 
 ```python
-# Resultados de referencia — versión anterior (para calcular deltas)
+# Reference results — previous version (to calculate deltas)
 V3_RESULTS = {
     "LightGBM": {"roc_auc": 0.955, "recall": 0.952, "precision": 0.713, "fp": 1444},
     "RF":       {"roc_auc": 0.950, "recall": 0.950, "precision": 0.704, "fp": 1504},
@@ -136,7 +136,7 @@ V3_RESULTS = {
 }
 ```
 
-Después de entrenar, se calculan deltas explícitos:
+After training, explicit deltas are calculated:
 
 ```python
 delta_precision = current_precision - V3_RESULTS["LightGBM"]["precision"]
@@ -145,203 +145,203 @@ delta_fp = current_fp - V3_RESULTS["LightGBM"]["fp"]
 # 877 - 1444 = -567
 ```
 
-Los resultados se presentan en una tabla con columna Δ para ver de un vistazo qué mejoró y cuánto. La "versión anterior" siempre es la última versión entrenada, no el baseline original — así el delta mide el impacto incremental de las features nuevas.
+Results are presented in a table with a Δ column to see at a glance what improved and by how much. The "previous version" is always the latest trained version, not the original baseline — this way the delta measures the incremental impact of the new features.
 
-**Por qué no se compara siempre contra el baseline original:** el baseline tiene 15 features; en v4 se tienen 22. Comparar v4 contra el baseline mezclaría el impacto de las features intermedias (v2, v3) con el impacto de las features de v4. El delta incremental aísla el efecto de cada iteración.
+**Why not always compare against the original baseline:** the baseline has 15 features; v4 has 22. Comparing v4 against the baseline would mix the impact of intermediate features (v2, v3) with the impact of v4 features. The incremental delta isolates the effect of each iteration.
 
 ---
 
-## Modelo A — Web Attack Detection (CSIC 2010)
+## Model A — Web Attack Detection (CSIC 2010)
 
-### Training baseline — 4 modelos
+### Training baseline — 4 models
 
-**Fecha:** 2026-04-10 / 2026-04-11  
+**Date:** 2026-04-10 / 2026-04-11  
 **Script:** `src/mlsec/models/train_model_a.py`  
 **Preprocessing:** `preprocess_csic_v1.py` → `features.parquet` (15 features)
 
-#### Hipótesis
+#### Hypothesis
 
-Con las 15 features construidas en el EDA (indicadores de texto en URL y content, one-hot de Method, url_length, content_length), un modelo de clasificación debería poder cumplir Recall ≥ 0.95 y Precision ≥ 0.85.
+With the 15 features built in the EDA (text indicators in URL and content, Method one-hot, url_length, content_length), a classification model should be able to meet Recall ≥ 0.95 and Precision ≥ 0.85.
 
-#### Modelos evaluados y resultados
+#### Evaluated models and results
 
-| Modelo | ROC-AUC | Recall | Precision | FP | FN | Estado |
+| Model | ROC-AUC | Recall | Precision | FP | FN | Status |
 |---|---|---|---|---|---|---|
-| Logistic Regression | 0.761 | 1.000 | 0.411 | 5400 | 0 | ❌ predice todo como ataque |
+| Logistic Regression | 0.761 | 1.000 | 0.411 | 5400 | 0 | ❌ predicts everything as attack |
 | Random Forest | 0.939 | 0.951 | 0.655 | 1886 | 185 | ❌ Recall ✅ / Precision ❌ |
 | XGBoost | 0.933 | 0.964 | 0.594 | 2476 | 137 | ❌ Recall ✅ / Precision ❌ |
 | LightGBM | 0.941 | 0.953 | 0.654 | 1894 | 178 | ❌ Recall ✅ / Precision ❌ |
 
-#### Qué encontramos
+#### What we found
 
-- **Logistic Regression** predice todo como ataque. Con ROC-AUC 0.76 no tiene capacidad para separar clases — el threshold óptimo para Recall ≥ 0.95 es tan bajo que clasifica todo como positivo. Descartada.
-- **RF, XGBoost y LightGBM** cumplen Recall pero no Precision. Los tres se estancan en ~0.94 ROC-AUC — el mismo techo independientemente del algoritmo.
-- **El techo uniforme es el diagnóstico clave:** cuando modelos tan distintos (lineal, ensemble paralelo, boosting secuencial) llegan al mismo resultado, el problema no está en el algoritmo sino en la información disponible. Las features no tienen suficiente señal para separar los falsos positivos.
-- **Threshold óptimo:** 0.15 para RF — muy por debajo del default 0.5, lo que confirma que asumir 0.5 habría dado Recall insuficiente.
+- **Logistic Regression** predicts everything as an attack. With ROC-AUC 0.76 it has no capacity to separate classes — the optimal threshold for Recall ≥ 0.95 is so low that it classifies everything as positive. Discarded.
+- **RF, XGBoost, and LightGBM** meet Recall but not Precision. All three stagnate at ~0.94 ROC-AUC — the same ceiling regardless of the algorithm.
+- **The uniform ceiling is the key diagnosis:** when such different models (linear, parallel ensemble, sequential boosting) arrive at the same result, the problem is not the algorithm but the available information. The features do not have enough signal to separate the false positives.
+- **Optimal threshold:** 0.15 for RF — well below the default 0.5, which confirms that assuming 0.5 would have yielded insufficient Recall.
 
-#### Decisión
+#### Decision
 
-No tiene sentido probar más algoritmos — el problema está en las features. El próximo paso es entender qué tienen en común los falsos positivos y buscar nueva señal.
+It doesn't make sense to try more algorithms — the problem is in the features. The next step is to understand what the false positives have in common and look for new signal.
 
 ---
 
-### Experimento v1 — Análisis de features
+### Experiment v1 — Feature analysis
 
-**Fecha:** 2026-04-11  
+**Date:** 2026-04-11  
 **Notebook:** `notebooks/experiments/csic2010_feature_analysis_v1.ipynb`  
-**Preprocessing usado:** `preprocess_csic_v1.py` → `features.parquet` (15 features)
+**Preprocessing used:** `preprocess_csic_v1.py` → `features.parquet` (15 features)
 
-#### Por qué lo hicimos
+#### Why we did it
 
-El training baseline mostró ~1.886 falsos positivos en todos los modelos. El modelo cumple Recall pero clasifica demasiado tráfico normal como ataque. Para mejorar la Precision necesitamos entender qué tienen en común esos FP — qué los hace "sospechosos" para el modelo aunque sean requests legítimos.
+The training baseline showed ~1,886 false positives across all models. The model meets Recall but classifies too much normal traffic as attack. To improve Precision we need to understand what these FPs have in common — what makes them "suspicious" to the model even though they are legitimate requests.
 
-#### Opciones consideradas
+#### Considered options
 
-| Opción | Por qué no la elegimos |
+| Option | Why we didn't choose it |
 |---|---|
-| Probar más algoritmos | El techo ~0.94 ROC-AUC es igual en todos — el problema no es el algoritmo |
-| Pasar al Modelo B | Válido para MVP pero deja una deuda técnica sin entender |
-| Agregar MLflow primero | Útil para organizar, pero no resuelve el problema de fondo |
-| **Feature importance + análisis FP** ← elegida | Aborda la causa raíz: falta de señal en las features |
+| Try more algorithms | The ~0.94 ROC-AUC ceiling is the same in all — the algorithm isn't the problem |
+| Move to Model B | Valid for MVP but leaves a technical debt without understanding |
+| Add MLflow first | Useful for organizing, but doesn't solve the core problem |
+| **Feature importance + FP analysis** ← chosen | Addresses the root cause: lack of signal in features |
 
-#### Qué hizo el notebook
+#### What the notebook did
 
-1. Re-entrenó el RF base con las 15 features como punto de referencia
-2. Calculó feature importance — ranking de contribución de cada feature
-3. Comparó los FP contra el tráfico normal bien clasificado (TN) para encontrar el patrón
-4. Probó 4 features nuevas candidatas y midió su correlación con el label
-5. Entrenó un RF extendido con las features nuevas y comparó métricas
+1. Re-trained the base RF with the 15 features as a reference point
+2. Calculated feature importance — contribution ranking of each feature
+3. Compared FPs against well-classified normal traffic (TN) to find the pattern
+4. Tested 4 new candidate features and measured their correlation with the label
+5. Trained an extended RF with the new features and compared metrics
 
-#### Qué encontramos
+#### What we found
 
-**Análisis de falsos positivos — el hallazgo central:**
+**False positive analysis — the central finding:**
 
-| Feature | FP (confundido) | TN (correcto) | Interpretación |
+| Feature | FP (confused) | TN (correct) | Interpretation |
 |---|---|---|---|
-| `url_length` | **+0.233** | -0.384 | FP tienen URLs más largas que TN |
-| `content_length` | **+0.243** | -0.357 | FP tienen bodies más largos que TN |
-| `method_is_post` | 0.302 | 0.177 | FP son más frecuentemente POSTs |
-| todos los `url_has_*` | ~0.000 | ~0.000 | **Sin indicadores de payload** |
-| todos los `content_has_*` | ~0.000 | ~0.000 | **Sin indicadores de payload** |
+| `url_length` | **+0.233** | -0.384 | FPs have longer URLs than TNs |
+| `content_length` | **+0.243** | -0.357 | FPs have longer bodies than TNs |
+| `method_is_post` | 0.302 | 0.177 | FPs are more frequently POSTs |
+| all `url_has_*` | ~0.000 | ~0.000 | **No payload indicators** |
+| all `content_has_*` | ~0.000 | ~0.000 | **No payload indicators** |
 
-Los 1.886 FP **no tienen ningún indicador de ataque**. El modelo los clasifica como ataque únicamente porque tienen URLs o bodies más largos. Aprendió "URL larga = sospechoso", pero hay tráfico normal legítimo con URLs largas que no contiene ningún payload malicioso.
+The 1,886 FPs **have no attack indicators**. The model classifies them as attacks solely because they have longer URLs or bodies. It learned "long URL = suspicious", but there is legitimate normal traffic with long URLs that contains no malicious payload.
 
-Esto explica directamente por qué la Precision no mejora: el modelo no puede distinguir entre una URL larga con payload de ataque y una URL larga sin payload — ambas se ven igual con las features actuales.
+This directly explains why Precision doesn't improve: the model cannot distinguish between a long URL with an attack payload and a long URL without a payload — both look the same with the current features.
 
-**Correlación de features nuevas candidatas con el label:**
+**Correlation of new candidate features with label:**
 
-| Feature | Correlación | Decisión |
+| Feature | Correlation | Decision |
 |---|---|---|
-| `url_pct_density` | **0.267** | ✅ señal útil — da contexto a la longitud |
-| `url_param_count` | **0.146** | ✅ señal útil — da contexto a la longitud |
-| `url_has_traversal` | NaN | ❌ `../` nunca aparece literal — siempre encoded como `%2F` |
-| `post_has_pct27` | NaN | ❌ intersección insuficiente en el dataset |
+| `url_pct_density` | **0.267** | ✅ useful signal — gives context to length |
+| `url_param_count` | **0.146** | ✅ useful signal — gives context to length |
+| `url_has_traversal` | NaN | ❌ `../` never appears literal — always encoded as `%2F` |
+| `post_has_pct27` | NaN | ❌ insufficient intersection in the dataset |
 
-`url_pct_density` da exactamente el contexto que faltaba: una URL larga con alta densidad de chars encoded (`%27`, `%3C`) es muy diferente a una URL larga con texto normal. `url_param_count` complementa esto con el número de parámetros.
+`url_pct_density` gives exactly the missing context: a long URL with high density of encoded chars (`%27`, `%3C`) is very different from a long URL with normal text. `url_param_count` complements this with the number of parameters.
 
-`url_has_traversal` y `post_has_pct27` dan NaN por el mismo motivo que los chars literales en el EDA original — los atacantes siempre usan percent-encoding.
+`url_has_traversal` and `post_has_pct27` give NaN for the same reason as literal chars in the original EDA — attackers always use percent-encoding.
 
-**Impacto medido (RF base vs RF extendido con 2 features nuevas):**
+**Measured impact (base RF vs extended RF with 2 new features):**
 
-| Modelo | ROC-AUC | Recall | Precision |
+| Model | ROC-AUC | Recall | Precision |
 |---|---|---|---|
-| RF base (15 features) | 0.939 | 0.951 ✅ | 0.655 ❌ |
-| RF extendido (17 features) | **0.950** | 0.951 ✅ | **0.704** ❌ |
+| Base RF (15 features) | 0.939 | 0.951 ✅ | 0.655 ❌ |
+| Extended RF (17 features) | **0.950** | 0.951 ✅ | **0.704** ❌ |
 
-Mejora: +0.011 ROC-AUC y **+0.049 Precision** — confirmado que las features nuevas aportan señal real.
+Improvement: +0.011 ROC-AUC and **+0.049 Precision** — confirmed that the new features provide real signal.
 
-#### Decisión tomada
+#### Decision taken
 
-Agregar `url_pct_density` y `url_param_count` al preprocessing oficial. Crear `preprocess_csic_v2.py` con estas dos features y re-entrenar los 4 modelos para confirmar la mejora con el pipeline completo.
+Add `url_pct_density` and `url_param_count` to the official preprocessing. Create `preprocess_csic_v2.py` with these two features and re-train all 4 models to confirm the improvement with the full pipeline.
 
 ---
 
-### Experimento v2 — Re-entrenamiento con features nuevas
+### Experiment v2 — Re-training with new features
 
-**Fecha:** 2026-04-11  
+**Date:** 2026-04-11  
 **Notebook:** `notebooks/experiments/csic2010_feature_analysis_v2.ipynb`  
-**Preprocessing usado:** `preprocess_csic_v2.py` → `features_v2.parquet` (17 features)
+**Preprocessing used:** `preprocess_csic_v2.py` → `features_v2.parquet` (17 features)
 
-#### Qué cambió respecto a v1
+#### What changed compared to v1
 
-Se incorporaron las dos features validadas en v1 al preprocessing oficial:
+The two features validated in v1 were incorporated into the official preprocessing:
 
-| Feature nueva | Qué mide | Por qué ayuda |
+| New Feature | What it measures | Why it helps |
 |---|---|---|
-| `url_pct_density` | Ratio de chars encoded (`%XX`) sobre longitud total de URL | Da contexto a url_length — una URL larga con alta densidad de encoding es muy diferente a una URL larga con texto normal |
-| `url_param_count` | Cantidad de parámetros en la URL (conteo de `=`) | Los ataques suelen tener más parámetros para inyectar payloads |
+| `url_pct_density` | Ratio of encoded chars (`%XX`) over total URL length | Gives context to url_length — a long URL with high encoding density is very different from a long URL with normal text |
+| `url_param_count` | Number of parameters in URL (count of `=`) | Attacks usually have more parameters to inject payloads |
 
-Se descartaron `url_has_traversal` y `post_has_pct27` porque dieron NaN en v1 — sin señal.
+`url_has_traversal` and `post_has_pct27` were discarded because they yielded NaN in v1 — no signal.
 
-Este notebook re-entrena los **4 modelos completos** (no solo RF) con `features_v2.parquet` para confirmar la mejora en todos los algoritmos y con el pipeline oficial de preprocessing.
+This notebook re-trains the **4 complete models** (not just RF) with `features_v2.parquet` to confirm the improvement across all algorithms and with the official preprocessing pipeline.
 
-#### Resultados
+#### Results
 
-| Modelo | ROC-AUC v2 | Δ vs v1 | Recall v2 | Δ vs v1 | Precision v2 | Δ vs v1 | FP v2 | Δ FP |
+| Model | ROC-AUC v2 | Δ vs v1 | Recall v2 | Δ vs v1 | Precision v2 | Δ vs v1 | FP v2 | Δ FP |
 |---|---|---|---|---|---|---|---|---|
 | Logistic Regression | 0.767 | +0.006 | 0.958 ✅ | -0.042 | 0.420 ❌ | +0.009 | 4971 | -429 |
 | Random Forest | 0.950 | +0.011 | 0.950 ✅ | -0.001 | **0.704** ❌ | **+0.049** | 1504 | -382 |
 | XGBoost | 0.945 | +0.012 | 0.963 ✅ | -0.001 | 0.633 ❌ | +0.039 | 2100 | -376 |
 | LightGBM | **0.953** | **+0.012** | 0.953 ✅ | +0.000 | **0.702** ❌ | **+0.048** | 1523 | -371 |
 
-#### Qué encontramos
+#### What we found
 
-- **Mejora consistente en todos los modelos** — el incremento no es casualidad estadística: todos suben ROC-AUC entre +0.006 y +0.012, y Precision entre +0.009 y +0.049. Dos features nuevas generaron mejora real y medible.
-- **Reducción de FP:** RF reduce de 1.886 a 1.504 (-382), LightGBM de 1.894 a 1.523 (-371). Hay ~380 requests normales que el modelo ya no clasifica incorrectamente como ataque.
-- **El techo sube:** de ~0.94 a ~0.95 ROC-AUC — no llegamos al límite de información, hay más señal disponible.
-- **Brecha restante:** Precision máxima es 0.704 (RF y LightGBM) vs criterio de 0.85 — quedan 0.146 por cerrar.
-- **Nota técnica:** LightGBM genera un warning menor (`X does not have valid feature names`) porque recibe numpy arrays en lugar de DataFrame. No afecta los resultados.
+- **Consistent improvement across all models** — the increment is not statistical chance: all raise ROC-AUC between +0.006 and +0.012, and Precision between +0.009 and +0.049. Two new features generated real and measurable improvement.
+- **FP Reduction:** RF reduces from 1,886 to 1,504 (-382), LightGBM from 1,894 to 1,523 (-371). There are ~380 normal requests that the model no longer incorrectly classifies as an attack.
+- **The ceiling rises:** from ~0.94 to ~0.95 ROC-AUC — we didn't reach the information limit, there is more signal available.
+- **Remaining gap:** Max Precision is 0.704 (RF and LightGBM) vs criterion of 0.85 — 0.146 left to close.
+- **Technical note:** LightGBM generates a minor warning (`X does not have valid feature names`) because it receives numpy arrays instead of DataFrame. Doesn't affect results.
 
-#### Decisión tomada
+#### Decision taken
 
-Continuar iterando. La mejora de +0.049 Precision con solo 2 features nuevas confirma que hay más señal disponible en el dataset. La siguiente iteración debe enfocarse en el **content POST** — los ataques POST tienen body 35% más largo (hallazgo del EDA) pero los indicadores de content actuales tienen correlación baja con el label. Hay señal sin explotar ahí.
+Continue iterating. The +0.049 Precision improvement with only 2 new features confirms there is more signal available in the dataset. The next iteration should focus on **POST content** — POST attacks have 35% longer bodies (EDA finding) but current content indicators have low correlation with the label. There is untapped signal there.
 
-Antes de crear v3, integrar **MLflow** para trackear los experimentos de forma sistemática.
+Before creating v3, integrate **MLflow** to systematically track the experiments.
 
 ---
 
-### Experimento v3 — Análisis content POST + MLflow
+### Experiment v3 — POST content analysis + MLflow
 
-**Fecha:** 2026-04-11  
+**Date:** 2026-04-11  
 **Notebook:** `notebooks/experiments/csic2010_feature_analysis_v3.ipynb`  
-**Preprocessing base:** `preprocess_csic_v2.py` → `features_v2.parquet` (17 features) + 2 features nuevas construidas en memoria
+**Base Preprocessing:** `preprocess_csic_v2.py` → `features_v2.parquet` (17 features) + 2 new features built in memory
 
-#### Por qué lo hicemos
+#### Why we did it
 
-v2 llegó a Precision 0.704 — brecha restante de 0.146 para alcanzar 0.85. Las dos features que agregamos en v2 (`url_pct_density`, `url_param_count`) dan contexto a la **longitud de URL**. La hipótesis para v3 es que aplica el mismo razonamiento al **body de los requests POST**: `content_length` solo no distingue entre un body largo con payload de ataque y un body largo con contenido legítimo.
+v2 reached Precision 0.704 — remaining gap of 0.146 to reach 0.85. The two features we added in v2 (`url_pct_density`, `url_param_count`) give context to **URL length**. The hypothesis for v3 is to apply the same reasoning to the **body of POST requests**: `content_length` alone does not distinguish between a long body with an attack payload and a long body with legitimate content.
 
-El EDA original mostró que los ataques POST tienen body 35% más largo que el tráfico normal POST, pero los `content_has_*` actuales tienen baja correlación con el label porque se calculan sobre todo el dataset (incluyendo GETs, cuyo content siempre es vacío).
+The original EDA showed that POST attacks have 35% longer bodies than normal POST traffic, but current `content_has_*` indicators have low correlation with the label because they are calculated over the entire dataset (including GETs, whose content is always empty).
 
-#### Qué hace el notebook
+#### What the notebook does
 
-1. Analiza los features de content **exclusivamente en la subpoblación POST** — donde content tiene significado real
-2. Identifica cuántos de los FP actuales son POSTs vs GETs
-3. Evalúa dos features candidatas: `content_pct_density` y `content_param_count`
-4. Re-entrena los 4 modelos con 19 features (v2 + 2 nuevas)
-5. **Primera integración de MLflow** — cada run se loggea con parámetros, métricas y artefactos en el experimento `mlsec-model-a`
+1. Analyzes content features **exclusively in the POST subpopulation** — where content has real meaning
+2. Identifies how many of the current FPs are POSTs vs GETs
+3. Evaluates two candidate features: `content_pct_density` and `content_param_count`
+4. Re-trains the 4 models with 19 features (v2 + 2 new)
+5. **First MLflow integration** — each run is logged with parameters, metrics, and artifacts in the `mlsec-model-a` experiment
 
-#### Features candidatas evaluadas
+#### Evaluated candidate features
 
-| Feature | Qué mide | Hipótesis |
+| Feature | What it measures | Hypothesis |
 |---|---|---|
-| `content_pct_density` | Ratio de chars encoded (`%XX`) sobre longitud total del body | Análogo a `url_pct_density` — distingue body largo con encoding de ataque vs body largo con texto normal |
-| `content_param_count` | Cantidad de `=` en el body | Análogo a `url_param_count` — los ataques POST suelen tener más parámetros inyectados |
+| `content_pct_density` | Ratio of encoded chars (`%XX`) over total body length | Analogous to `url_pct_density` — distinguishes long body with attack encoding vs long body with normal text |
+| `content_param_count` | Number of `=` in the body | Analogous to `url_param_count` — POST attacks usually have more injected parameters |
 
-#### Resultados
+#### Results
 
-| Modelo | ROC-AUC | Δv2 | Recall | Δv2 | Precision | Δv2 | FP | Criterios |
+| Model | ROC-AUC | Δv2 | Recall | Δv2 | Precision | Δv2 | FP | Criteria |
 |---|---|---|---|---|---|---|---|---|
 | LR | 0.777 | +0.010 | 0.977 | +0.019 | 0.417 | -0.003 | 5138 | ❌ |
 | RF | 0.950 | +0.000 | 0.947 | -0.003 | 0.716 | +0.012 | 1416 | ❌ Recall < 0.95 |
 | XGBoost | 0.948 | +0.003 | 0.958 | -0.005 | 0.649 | +0.016 | 1946 | ❌ |
 | LightGBM | 0.955 | +0.002 | 0.952 | -0.001 | 0.713 | +0.011 | 1444 | ❌ |
 
-**Conclusión:** mejoras consistentes pero insuficientes. `content_pct_density` solo eliminó 88 FP POST de los 569 esperados — los FP POST tampoco tienen encoding en el body, solo son más largos. El 62.2% de FP son GETs y no son atacables con features de content.
+**Conclusion:** Consistent but insufficient improvements. `content_pct_density` only eliminated 88 POST FPs out of the expected 569 — POST FPs also don't have encoding in the body, they are just longer. 62.2% of FPs are GETs and cannot be tackled with content features.
 
-**Próxima dirección:** análisis de estructura de URL sobre la subpoblación GET — `url_path_depth`, `url_query_length`, `url_has_query`. Ver `csic2010_feature_analysis_v4.ipynb`.
+**Next direction:** URL structure analysis on the GET subpopulation — `url_path_depth`, `url_query_length`, `url_has_query`. See `csic2010_feature_analysis_v4.ipynb`.
 
 ---
 
-## Modelo B — Network Attack Detection (UNSW-NB15)
+## Model B — Network Attack Detection (UNSW-NB15)
 
-_Sin experimentos todavía. Pendiente Phase 3.1 — arrancar después de completar iteraciones de Modelo A o en paralelo._
+_No experiments yet. Pending Phase 3.1 — start after completing Model A iterations or in parallel._

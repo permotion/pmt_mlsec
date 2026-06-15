@@ -1,107 +1,106 @@
-# Modelos
+# Models
 
-## Decisiones de diseño
+## Design decisions
 
-### Labels unificados
+### Unified labels
 - `0` = benign / normal
 - `1` = malicious / attack
 
-### Threshold de decisión
-El threshold **no se asume 0.5**. Se determina por curva ROC/PR
-optimizando el criterio de éxito de cada modelo.
+### Decision threshold
+The threshold **is not assumed to be 0.5**. It is determined by ROC/PR curve optimizing the success criteria of each model.
 
-### Estrategia de validación
-- Split estratificado (preserva distribución de clases)
+### Validation strategy
+- Stratified split (preserves class distribution)
 - `train/val/test`: 70% / 15% / 15%
-- Reproducibilidad: `random_state=42` en todos los splits
+- Reproducibility: `random_state=42` in all splits
 
 ---
 
-## Modelo A — Web Attack Detection
+## Model A — Web Attack Detection
 
 **Dataset:** CSIC 2010  
-**Input:** Features extraídas de requests HTTP  
+**Input:** Features extracted from HTTP requests  
 **Output:** `0` (normal) / `1` (attack)
 
-### Criterios de éxito
+### Success criteria
 
-| Métrica | Umbral mínimo |
+| Metric | Minimum threshold |
 |---|---|
 | Recall | ≥ 0.95 |
 | Precision | ≥ 0.85 |
 
-### Datos del dataset (post-EDA)
+### Dataset info (post-EDA)
 
-| Campo | Valor |
+| Field | Value |
 |---|---|
-| Total registros | 61.065 |
-| Columnas originales | 17 |
-| Normal (0) | 36.000 (59%) |
-| Attack (1) | 25.065 (41%) |
-| Requests GET | ~43.088 (70.6%) |
-| Requests POST | ~18.977 (29.4%) |
+| Total records | 61,065 |
+| Original columns | 17 |
+| Normal (0) | 36,000 (59%) |
+| Attack (1) | 25,065 (41%) |
+| GET requests | ~43,088 (70.6%) |
+| POST requests | ~18,977 (29.4%) |
 
-### Estrategia para desbalance de clases
+### Class imbalance strategy
 
-Desbalance leve (59/41) — no requiere SMOTE.
-Usar `class_weight='balanced'` en el modelo.
+Mild imbalance (59/41) — does not require SMOTE.
+Use `class_weight='balanced'` in the model.
 
-### Dónde viven los ataques
+### Where the attacks live
 
-- **GET** → el ataque está en la `URL` (query string)
-- **POST** → el ataque está en `content` (body del request)
+- **GET** → the attack is in the `URL` (query string)
+- **POST** → the attack is in `content` (request body)
 
-### Columnas descartadas (post-EDA)
+### Discarded columns (post-EDA)
 
-| Columna | Razón |
+| Column | Reason |
 |---|---|
-| `Unnamed: 0` | Redundante con label |
-| `host` | 2 valores, sin señal útil |
-| `connection` | 2 valores, sin señal útil |
-| `language` | Constante — 1 único valor |
-| `User-Agent` | Constante — 1 único valor |
-| `Pragma` | Constante — 1 único valor |
-| `Cache-Control` | Constante — 1 único valor |
-| `Accept` | Constante — 1 único valor |
-| `Accept-encoding` | Constante — 1 único valor |
-| `Accept-charset` | Constante — 1 único valor |
-| `content-type` | Constante entre no-nulos — 1 único valor |
+| `Unnamed: 0` | Redundant with label |
+| `host` | 2 values, no useful signal |
+| `connection` | 2 values, no useful signal |
+| `language` | Constant — 1 single value |
+| `User-Agent` | Constant — 1 single value |
+| `Pragma` | Constant — 1 single value |
+| `Cache-Control` | Constant — 1 single value |
+| `Accept` | Constant — 1 single value |
+| `Accept-encoding` | Constant — 1 single value |
+| `Accept-charset` | Constant — 1 single value |
+| `content-type` | Constant among non-nulls — 1 single value |
 
-### Nulos — estrategia
+### Nulls — strategy
 
-| Columna | Nulos | Estrategia |
+| Column | Nulls | Strategy |
 |---|---|---|
-| `content`, `lenght`, `content-type` | 70.56% | No imputar — son NaN por diseño en GETs |
-| `Accept` | 0.65% | Imputar con moda o descartar |
+| `content`, `lenght`, `content-type` | 70.56% | Do not impute — they are NaN by design in GETs |
+| `Accept` | 0.65% | Impute with mode or discard |
 
-### Features candidatas (post-EDA inicial)
+### Candidate features (initial post-EDA)
 
-| Feature | Fuente | Tipo | Notas |
+| Feature | Source | Type | Notes |
 |---|---|---|---|
-| `method_is_put` | `Method` | Binaria | **100% ataques** — feature más poderosa |
-| `method_is_post` | `Method` | Binaria | 54% tasa de ataque |
-| `url_length` | `URL` | Numérica | URLs de ataque suelen ser más largas |
-| `content_length` | `content` | Numérica | 0 en GETs, presente en POSTs |
-| `url_has_sq` | `URL` | Binaria | Presencia de `'` — SQLi |
-| `url_has_lt/gt` | `URL` | Binaria | Presencia de `<>` — XSS |
-| `url_has_dashdash` | `URL` | Binaria | Presencia de `--` — SQLi |
-| `url_has_select` | `URL` | Binaria | Keyword SQL |
-| `url_has_union` | `URL` | Binaria | Keyword SQL |
-| `url_has_script` | `URL` | Binaria | Keyword XSS |
-| `url_has_pct27` | `URL` | Binaria | `'` URL-encoded |
-| `content_has_*` | `content` | Binaria | Mismos indicadores en body POST |
+| `method_is_put` | `Method` | Binary | **100% attacks** — most powerful feature |
+| `method_is_post` | `Method` | Binary | 54% attack rate |
+| `url_length` | `URL` | Numeric | Attack URLs are usually longer |
+| `content_length` | `content` | Numeric | 0 in GETs, present in POSTs |
+| `url_has_sq` | `URL` | Binary | Presence of `'` — SQLi |
+| `url_has_lt/gt` | `URL` | Binary | Presence of `<>` — XSS |
+| `url_has_dashdash` | `URL` | Binary | Presence of `--` — SQLi |
+| `url_has_select` | `URL` | Binary | SQL keyword |
+| `url_has_union` | `URL` | Binary | SQL keyword |
+| `url_has_script` | `URL` | Binary | XSS keyword |
+| `url_has_pct27` | `URL` | Binary | URL-encoded `'` |
+| `content_has_*` | `content` | Binary | Same indicators in POST body |
 
-> Correlaciones exactas con el label: pendiente sección 7-8 del notebook.
+> Exact correlations with the label: pending section 7-8 of the notebook.
 
-### Modelos a evaluar (en orden)
+### Models to evaluate (in order)
 
 1. **Baseline:** Logistic Regression
 2. Random Forest
 3. Gradient Boosting (XGBoost / LightGBM)
 
-### Resultados de training — Phase 3.1
+### Training results — Phase 3.1
 
-Split estratificado 70/15/15 — `random_state=42`.  
+Stratified split 70/15/15 — `random_state=42`.  
 Script: `src/mlsec/models/train_model_a.py`
 
 #### Logistic Regression (baseline)
@@ -111,14 +110,14 @@ Script: `src/mlsec/models/train_model_a.py`
 | Validation | 1.000 | 0.411 | 0.582 | 0.739 |
 | **Test** | **1.000** | **0.411** | **0.582** | **0.761** |
 
-| Criterio | Resultado | Estado |
+| Criterion | Result | Status |
 |---|---|---|
 | Recall ≥ 0.95 | 1.000 | ✅ |
 | Precision ≥ 0.85 | 0.411 | ❌ |
 
-**Diagnóstico:** el modelo predice todo como ataque. Con ROC-AUC 0.76 no tiene capacidad suficiente para separar clases — el threshold óptimo para Recall ≥ 0.95 colapsa a un valor tan bajo que clasifica todos los registros como ataque. Precision = proporción de ataques en el dataset (41%).
+**Diagnosis:** the model predicts everything as an attack. With 0.76 ROC-AUC it doesn't have enough capacity to separate classes — the optimal threshold for Recall ≥ 0.95 collapses to such a low value that it classifies all records as attacks. Precision = proportion of attacks in the dataset (41%).
 
-#### Random Forest (200 estimadores)
+#### Random Forest (200 estimators)
 
 | Split | Recall | Precision | F1 | ROC-AUC |
 |---|---|---|---|---|
@@ -132,14 +131,14 @@ TN=3514  FP=1886
 FN=185   TP=3575
 ```
 
-| Criterio | Resultado | Estado |
+| Criterion | Result | Status |
 |---|---|---|
 | Recall ≥ 0.95 | 0.951 | ✅ |
 | Precision ≥ 0.85 | 0.655 | ❌ |
 
-**Diagnóstico:** Recall cumplido. Precision insuficiente — 1.886 falsos positivos. Mejor modelo hasta ahora pero el techo de ROC-AUC (~0.94) sugiere que el problema está en las features, no en el algoritmo.
+**Diagnosis:** Recall met. Insufficient Precision — 1,886 false positives. Best model so far but the ROC-AUC ceiling (~0.94) suggests the problem is in the features, not the algorithm.
 
-#### XGBoost (200 estimadores)
+#### XGBoost (200 estimators)
 
 | Split | Recall | Precision | F1 | ROC-AUC |
 |---|---|---|---|---|
@@ -153,14 +152,14 @@ TN=2924  FP=2476
 FN=137   TP=3623
 ```
 
-| Criterio | Resultado | Estado |
+| Criterion | Result | Status |
 |---|---|---|
 | Recall ≥ 0.95 | 0.964 | ✅ |
 | Precision ≥ 0.85 | 0.594 | ❌ |
 
-**Diagnóstico:** Recall más alto (0.964) pero Precision más baja (0.594) — más FP que Random Forest. El threshold más agresivo (0.117) genera más falsas alarmas.
+**Diagnosis:** Higher Recall (0.964) but lower Precision (0.594) — more FPs than Random Forest. The more aggressive threshold (0.117) generates more false alarms.
 
-#### LightGBM (200 estimadores)
+#### LightGBM (200 estimators)
 
 | Split | Recall | Precision | F1 | ROC-AUC |
 |---|---|---|---|---|
@@ -174,127 +173,127 @@ TN=3506  FP=1894
 FN=178   TP=3582
 ```
 
-| Criterio | Resultado | Estado |
+| Criterion | Result | Status |
 |---|---|---|
 | Recall ≥ 0.95 | 0.953 | ✅ |
 | Precision ≥ 0.85 | 0.654 | ❌ |
 
-**Diagnóstico:** Resultados casi idénticos a Random Forest. Mejor ROC-AUC (0.941) pero misma Precision. Confirma que el techo del modelo está en las features actuales.
+**Diagnosis:** Almost identical results to Random Forest. Better ROC-AUC (0.941) but same Precision. Confirms the model ceiling is in the current features.
 
-#### Resumen comparativo — Phase 3.1
+#### Comparative summary — Phase 3.1
 
-| Modelo | ROC-AUC | Recall | Precision | FP | FN | Estado |
+| Model | ROC-AUC | Recall | Precision | FP | FN | Status |
 |---|---|---|---|---|---|---|
-| Logistic Regression | 0.761 | 1.000 | 0.411 | 5400 | 0 | ❌ predice todo como ataque |
-| Random Forest | 0.939 | 0.951 | 0.655 | 1886 | 185 | ❌ Precision insuficiente |
-| XGBoost | 0.933 | 0.964 | 0.594 | 2476 | 137 | ❌ Precision insuficiente |
-| LightGBM | **0.941** | 0.953 | 0.654 | 1894 | 178 | ❌ Precision insuficiente |
+| Logistic Regression | 0.761 | 1.000 | 0.411 | 5400 | 0 | ❌ predicts everything as attack |
+| Random Forest | 0.939 | 0.951 | 0.655 | 1886 | 185 | ❌ Insufficient Precision |
+| XGBoost | 0.933 | 0.964 | 0.594 | 2476 | 137 | ❌ Insufficient Precision |
+| LightGBM | **0.941** | 0.953 | 0.654 | 1894 | 178 | ❌ Insufficient Precision |
 
-!!! warning "Techo de features"
-    Todos los modelos llegan a ~0.94 ROC-AUC con las 15 features actuales. El cuello de botella no es el algoritmo — es la cantidad de información disponible. Las features de `content` (body POST) están incompletas: `content_has_*` se calcula pero no se están aprovechando bien para diferenciar ataques POST de tráfico normal.
+!!! warning "Feature ceiling"
+    All models reach ~0.94 ROC-AUC with the current 15 features. The bottleneck is not the algorithm — it is the amount of information available. The `content` features (POST body) are incomplete: `content_has_*` are calculated but not well utilized to differentiate POST attacks from normal traffic.
 
-!!! info "Threshold óptimo"
-    El threshold se optimizó en val buscando Recall ≥ 0.95 con la mayor Precision posible. Los valores resultantes (0.15–0.17) son mucho más bajos que el default 0.5 — confirma que asumir 0.5 habría dado Recall insuficiente.
+!!! info "Optimal threshold"
+    The threshold was optimized on val searching for Recall ≥ 0.95 with the highest possible Precision. The resulting values (0.15–0.17) are much lower than the default 0.5 — confirming that assuming 0.5 would have given insufficient Recall.
 
-#### Próximo paso — mejora de features
+#### Next step — feature improvement
 
-Para superar el techo de Precision, las opciones son:
+To overcome the Precision ceiling, the options are:
 
-1. **Agregar features de content** — los indicadores `content_has_*` existen pero falta analizar su poder discriminativo en ataques POST específicamente
-2. **Feature importance** — identificar qué features aportan más y si hay señal sin explotar
-3. **Combinar method + indicadores** — features cruzadas como `is_post_AND_has_pct27`
+1. **Add content features** — `content_has_*` indicators exist but need analysis of their discriminative power specifically in POST attacks
+2. **Feature importance** — identify which features contribute most and if there's untapped signal
+3. **Combine method + indicators** — crossed features like `is_post_AND_has_pct27`
 
 ---
 
-## Modelo B — Network Attack Detection
+## Model B — Network Attack Detection
 
 **Dataset:** UNSW-NB15  
-**Input:** 49 features de flujo de red  
+**Input:** 49 network flow features  
 **Output:** `0` (benign) / `1` (malicious)
 
-### Criterios de éxito
+### Success criteria
 
-| Métrica | Umbral mínimo |
+| Metric | Minimum threshold |
 |---|---|
 | F1 | ≥ 0.88 |
 | ROC-AUC | ≥ 0.95 |
 
-### Features principales
+### Main features
 
-Del paper original UNSW-NB15:
+From the original UNSW-NB15 paper:
 `dur`, `proto`, `service`, `state`, `spkts`, `dpkts`, `sbytes`, `dbytes`,
 `rate`, `sttl`, `dttl`, `sload`, `dload`, `ct_srv_src`
 
-### Modelos a evaluar (en orden)
+### Models to evaluate (in order)
 
-1. **Baseline:** Random Forest (buen desempeño conocido en este dataset)
+1. **Baseline:** Random Forest (known good performance on this dataset)
 2. XGBoost
 3. LightGBM
 
-### Datos del dataset (post-EDA)
+### Dataset info (post-EDA)
 
-| Campo | Valor |
+| Field | Value |
 |---|---|
-| Train shape | 175.341 × 36 |
-| Test shape | 82.332 × 36 |
-| Benign train (0) | 56.000 (31.9%) |
-| Malicious train (1) | 119.341 (68.1%) |
-| Benign test (0) | 37.000 (44.9%) |
-| Malicious test (1) | 45.332 (55.1%) |
-| Split | Predefinido en parquet — no modificar |
+| Train shape | 175,341 × 36 |
+| Test shape | 82,332 × 36 |
+| Benign train (0) | 56,000 (31.9%) |
+| Malicious train (1) | 119,341 (68.1%) |
+| Benign test (0) | 37,000 (44.9%) |
+| Malicious test (1) | 45,332 (55.1%) |
+| Split | Predefined in parquet — do not modify |
 
-### Columnas descartadas (post-EDA)
+### Discarded columns (post-EDA)
 
-| Columna | Razón |
+| Column | Reason |
 |---|---|
-| `dwin` | 0.99 correlación con `swin` — redundante |
-| `dloss` | 0.98 correlación con `dpkts` — redundante |
-| `is_sm_ips_ports` | 0.94 correlación con `sinpkt`, menor correlación con label |
-| `attack_cat` | Solo para análisis — label categórico de los 9 tipos de ataque |
+| `dwin` | 0.99 correlation with `swin` — redundant |
+| `dloss` | 0.98 correlation with `dpkts` — redundant |
+| `is_sm_ips_ports` | 0.94 correlation with `sinpkt`, lower correlation with label |
+| `attack_cat` | Only for analysis — categorical label of the 9 attack types |
 
-### Estrategia de preprocessing (post-EDA)
+### Preprocessing strategy (post-EDA)
 
-| Aspecto | Decisión |
+| Aspect | Decision |
 |---|---|
-| **Nulos** | Sin imputación — dataset completo, sin nulos |
-| **Normalización** | `RobustScaler` — outliers extremos en sbytes, sload, dload |
-| **proto** (133 valores) | Top-10 + categoría `other` → one-hot |
-| **service** (13 valores) | One-hot directo |
-| **state** (9 valores) | One-hot directo |
-| **`-` en service** | No es nulo — es categoría "sin servicio", se mantiene |
+| **Nulls** | No imputation — complete dataset, no nulls |
+| **Normalization** | `RobustScaler` — extreme outliers in sbytes, sload, dload |
+| **proto** (133 values) | Top-10 + `other` category → one-hot |
+| **service** (13 values) | Direct one-hot |
+| **state** (9 values) | Direct one-hot |
+| **`-` in service** | Not null — it is "no service" category, keep it |
 
-### Nota sobre desbalance de clases
+### Note on class imbalance
 
-UNSW-NB15 tiene **más ataques que tráfico normal** (68% malicious en train). Estrategia inicial: `class_weight='balanced'`. Si no alcanza, evaluar SMOTE en training set únicamente. Ajuste de threshold post-entrenamiento siempre.
+UNSW-NB15 has **more attacks than normal traffic** (68% malicious in train). Initial strategy: `class_weight='balanced'`. If not enough, evaluate SMOTE on training set only. Always adjust threshold post-training.
 
 ---
 
-## Registro de decisiones
+## Decision log
 
-| Fecha | Decisión | Razón |
+| Date | Decision | Reason |
 |---|---|---|
-| 2026-04-06 | Labels: 0=benign, 1=attack | Consistencia entre modelos |
-| 2026-04-06 | Detección offline en MVP | Simplifica arquitectura inicial |
-| 2026-04-06 | Threshold no fijo en 0.5 | Optimizar Recall en ataques |
-| 2026-04-06 | Airflow en Phase 4 | Evitar complejidad prematura |
-| 2026-04-06 | No usar SMOTE en Modelo A | Desbalance leve 59/41 — class_weight='balanced' suficiente |
-| 2026-04-06 | Nulos en content/lenght no se imputan | Son NaN por diseño HTTP en requests GET |
-| 2026-04-06 | Features basadas en URL y content | Los ataques viven en query string (GET) y body (POST) |
-| 2026-04-06 | method_is_put es feature crítica | 100% de requests PUT son ataques en CSIC 2010 |
-| 2026-04-06 | Usar caracteres URL-encoded, no literales | `'` crudo nunca aparece — usar `%27`; `<` crudo nunca aparece — usar `%3C` |
-| 2026-04-06 | Descartar url_has_union y chars crudos | Correlación ~0 o NaN — sin poder discriminativo en URLs |
-| 2026-04-06 | 11 columnas descartadas por ser constantes | nunique()=1, sin información para el modelo |
-| 2026-04-06 | UNSW-NB15: split predefinido en parquet se respeta | Dataset tiene train/test oficiales — no re-splitear |
-| 2026-04-06 | UNSW-NB15: RobustScaler para features numéricas | Outliers extremos en sbytes (max 12M), sload (max 5.9B) |
-| 2026-04-06 | UNSW-NB15: proto top-10+other | 133 valores únicos — one-hot directo generaría demasiadas columnas |
-| 2026-04-06 | UNSW-NB15: descartar dwin, dloss, is_sm_ips_ports | Correlación >0.9 con otras features — redundantes |
-| 2026-04-06 | UNSW-NB15: mantener stcpb/dtcpb en modelo inicial | Correlación -0.255 inesperada — validar con feature importance post-training |
-| 2026-04-06 | UNSW-NB15: estrategia desbalance — class_weight='balanced' primero | Desbalance 68/32 — probar balanced antes de SMOTE |
-| 2026-04-10 | Modelo A: LR descartada como baseline | ROC-AUC 0.76 — predice todo como ataque, Precision 0.41 |
-| 2026-04-10 | Modelo A: Random Forest cumple Recall (0.951) pero no Precision (0.655) | Threshold óptimo 0.15, 1886 FP — probar XGBoost/LightGBM |
-| 2026-04-10 | Modelo A: threshold óptimo 0.15, no 0.5 | Confirma que asumir 0.5 sería insuficiente para el criterio de Recall |
-| 2026-04-11 | Modelo A: XGBoost y LightGBM no superan RF | ROC-AUC ~0.94 en todos — techo de features, no de algoritmo |
-| 2026-04-11 | Modelo A: FP causados por longitud, no por payload | url_length y content_length solos generan ruido — necesitan contexto |
-| 2026-04-11 | Modelo A: url_pct_density y url_param_count mejoran Precision +0.049 | ROC-AUC 0.939→0.950, Precision 0.655→0.704 — agregadas en preprocess_csic_v2.py |
-| 2026-04-11 | Modelo A: url_has_traversal y post_has_pct27 descartadas | NaN — nunca aparecen literales, siempre percent-encoded |
-| 2026-04-11 | Modelo A v2: mejor modelo LightGBM ROC-AUC 0.953, Precision 0.702 | Brecha restante 0.148 para llegar a Precision 0.85 — continuar con v3 |
+| 2026-04-06 | Labels: 0=benign, 1=attack | Consistency between models |
+| 2026-04-06 | Offline detection in MVP | Simplifies initial architecture |
+| 2026-04-06 | Threshold not fixed at 0.5 | Optimize Recall on attacks |
+| 2026-04-06 | Airflow in Phase 4 | Avoid premature complexity |
+| 2026-04-06 | No SMOTE in Model A | Mild 59/41 imbalance — class_weight='balanced' sufficient |
+| 2026-04-06 | Nulls in content/lenght not imputed | They are NaN by HTTP design in GET requests |
+| 2026-04-06 | URL and content-based features | Attacks live in query string (GET) and body (POST) |
+| 2026-04-06 | method_is_put is critical feature | 100% of PUT requests are attacks in CSIC 2010 |
+| 2026-04-06 | Use URL-encoded chars, not literals | Raw `'` never appears — use `%27`; raw `<` never appears — use `%3C` |
+| 2026-04-06 | Discard url_has_union and raw chars | Correlation ~0 or NaN — no discriminative power in URLs |
+| 2026-04-06 | 11 columns discarded for being constant | nunique()=1, no info for the model |
+| 2026-04-06 | UNSW-NB15: predefined parquet split respected | Dataset has official train/test — don't resplit |
+| 2026-04-06 | UNSW-NB15: RobustScaler for numeric features | Extreme outliers in sbytes (max 12M), sload (max 5.9B) |
+| 2026-04-06 | UNSW-NB15: proto top-10+other | 133 unique values — direct one-hot would generate too many columns |
+| 2026-04-06 | UNSW-NB15: discard dwin, dloss, is_sm_ips_ports | Correlation >0.9 with other features — redundant |
+| 2026-04-06 | UNSW-NB15: keep stcpb/dtcpb in initial model | Unexpected -0.255 correlation — validate with post-training feature importance |
+| 2026-04-06 | UNSW-NB15: imbalance strategy — class_weight='balanced' first | 68/32 imbalance — try balanced before SMOTE |
+| 2026-04-10 | Model A: LR discarded as baseline | ROC-AUC 0.76 — predicts everything as attack, Precision 0.41 |
+| 2026-04-10 | Model A: Random Forest meets Recall (0.951) but not Precision (0.655) | Optimal threshold 0.15, 1886 FPs — try XGBoost/LightGBM |
+| 2026-04-10 | Model A: optimal threshold 0.15, not 0.5 | Confirms assuming 0.5 would be insufficient for Recall criterion |
+| 2026-04-11 | Model A: XGBoost and LightGBM do not beat RF | ROC-AUC ~0.94 in all — feature ceiling, not algorithm |
+| 2026-04-11 | Model A: FPs caused by length, not payload | url_length and content_length alone generate noise — need context |
+| 2026-04-11 | Model A: url_pct_density and url_param_count improve Precision +0.049 | ROC-AUC 0.939→0.950, Precision 0.655→0.704 — added in preprocess_csic_v2.py |
+| 2026-04-11 | Model A: url_has_traversal and post_has_pct27 discarded | NaN — literals never appear, always percent-encoded |
+| 2026-04-11 | Model A v2: best LightGBM model ROC-AUC 0.953, Precision 0.702 | Remaining 0.148 gap to reach 0.85 Precision — continue with v3 |

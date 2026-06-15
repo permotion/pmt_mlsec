@@ -1,43 +1,44 @@
-# Modelo B — Network Attack Detection
+# Model B — Network Attack Detection
 
 **Dataset:** UNSW-NB15  
-**Input:** Features de flujo de red  
+**Input:** Network flow features  
 **Output:** `0` benign / `1` malicious
 
 ---
 
-## Criterios de éxito MVP
+## MVP Success Criteria
 
-| Métrica | Mínimo |
+| Metric | Minimum |
 |---|---|
 | F1 | ≥ 0.88 |
 | ROC-AUC | ≥ 0.95 |
 
 ---
 
-## Estado actual
+## Current Status
 
-!!! info "Pendiente"
-    El Modelo B está en cola. El preprocessing está listo (`preprocess_unsw.py`), pero el entrenamiento y los experimentos todavía no comenzaron.
-
-    **Pendiente:** crear `src/mlsec/models/train_model_b.py` y ejecutar el baseline.
+> [!NOTE]
+> **Pending**
+> Model B is in the queue. Preprocessing is ready (`preprocess_unsw.py`), but training and experiments have not started yet.
+> 
+> **Pending:** create `src/mlsec/models/train_model_b.py` and run the baseline.
 
 ---
 
-## Preprocessing completado
+## Completed Preprocessing
 
 **Script:** `src/mlsec/data/preprocess_unsw.py`  
-**Outputs:** `data/processed/unsw_nb15/train.parquet` (175.341 × 62), `test.parquet` (82.332 × 62)
+**Outputs:** `data/processed/unsw_nb15/train.parquet` (175,341 × 62), `test.parquet` (82,332 × 62)
 
-Decisiones clave del preprocessing:
+Key preprocessing decisions:
 
-| Decisión | Justificación |
+| Decision | Justification |
 |---|---|
-| Scaler: **RobustScaler** | Resistente a outliers — `sbytes` max 12M, `sload` max 5.9B |
-| Drop `dwin`, `dloss`, `is_sm_ips_ports` | Redundantes con otras features |
-| Drop `attack_cat` | Solo para análisis — no es un feature de entrada |
-| `proto`: top-10 + 'other' one-hot | 133 valores únicos — reducción necesaria |
-| `service`, `state`: one-hot directo | Pocos valores únicos |
-| `DataFrame.align()` | Sincroniza columnas train/test tras one-hot |
+| Scaler: **RobustScaler** | Resistant to outliers — `sbytes` max 12M, `sload` max 5.9B |
+| Drop `dwin`, `dloss`, `is_sm_ips_ports` | Redundant with other features |
+| Drop `attack_cat` | Only for analysis — not an input feature |
+| `proto`: top-10 + 'other' one-hot | 133 unique values — reduction needed |
+| `service`, `state`: direct one-hot | Few unique values |
+| `DataFrame.align()` | Synchronizes train/test columns after one-hot |
 
-Ver EDA: `notebooks/eda/unsw_nb15_eda.ipynb`
+See EDA: `notebooks/eda/unsw_nb15_eda.ipynb`

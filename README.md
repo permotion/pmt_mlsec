@@ -34,7 +34,7 @@ ML-based security attack detection system. Two binary classifiers built on publi
 
 **Best model:** LightGBM — Recall 0.953 ✅ / Precision 0.793 / ROC-AUC 0.968
 
-**Decision:** Precision ~0.793 accepted as the practical ceiling of the HTTP field feature approach. The 936 remaining FPs are structurally ambiguous — the model confuses Latin-1 encoded Spanish characters (`%F1`=ñ, `%ED`=í) with attack encoding (`%27`=`'`, `%3C`=`<`) because `content_pct_density` counts all `%XX` sequences equally. Closing the gap requires semantic parsing of parameter values or session-level features — a different approach.
+**Decision:** Precision ~0.793 accepted as the practical ceiling of the HTTP field feature approach. The 936 remaining FPs are structurally ambiguous — the model confuses Latin-1 encoded Spanish characters (`%F1`=n-tilde, `%ED`=i-acute) with attack encoding (`%27`=`'`, `%3C`=`<`) because `content_pct_density` counts all `%XX` sequences equally. Closing the gap requires semantic parsing of parameter values or session-level features — a different approach.
 
 ### Key findings
 
@@ -47,7 +47,7 @@ ML-based security attack detection system. Two binary classifiers built on publi
 
 ## Model B — UNSW-NB15 (in progress)
 
-EDA complete. Preprocessing and training pending.
+EDA and preprocessing complete. Training pending.
 
 **EDA findings:**
 - 9 attack categories: Generic (33%), Exploits (28%), Fuzzers (15%), DoS (4%), Reconnaissance (5%), and others

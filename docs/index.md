@@ -1,42 +1,42 @@
 # PMT MLSec
 
-Sistema de detección de ataques usando Machine Learning, enfocado en workloads web y de red.
+Attack detection system using Machine Learning, focused on web and network workloads.
 
 ---
 
-## Qué hace
+## What it does
 
-Dos modelos de clasificación binaria para detección offline de ataques:
+Two binary classification models for offline attack detection:
 
 <div class="grid cards" markdown>
 
--   :material-web: **Modelo A — Web Attack Detection**
+-   :material-web: **Model A — Web Attack Detection**
 
     ---
 
-    Detecta ataques HTTP usando el dataset CSIC 2010.
-    Input: features de request HTTP.
+    Detects HTTP attacks using the CSIC 2010 dataset.
+    Input: HTTP request features.
     Output: `normal` / `attack`
 
-    [:octicons-arrow-right-24: Ver Modelo A](model_a/index.md)
+    [:octicons-arrow-right-24: View Model A](model_a/index.md)
 
--   :material-lan: **Modelo B — Network Attack Detection**
+-   :material-lan: **Model B — Network Attack Detection**
 
     ---
 
-    Detecta ataques de red usando el dataset UNSW-NB15.
-    Input: features de flujo de red.
+    Detects network attacks using the UNSW-NB15 dataset.
+    Input: network flow features.
     Output: `benign` / `malicious`
 
-    [:octicons-arrow-right-24: Ver Modelo B](model_b/index.md)
+    [:octicons-arrow-right-24: View Model B](model_b/index.md)
 
 </div>
 
 ---
 
-## Prueba de concepto — Evaluación de requests reales
+## Proof of Concept — Evaluating real requests
 
-Esta es la demostración más directa del Modelo A funcionando en la práctica. Se toma un request HTTP en formato de log de Nginx y se evalúa contra el modelo:
+This is the most direct demonstration of Model A working in practice. An HTTP request in Nginx log format is taken and evaluated against the model:
 
 ### Script: `eval_log_line.py`
 
@@ -44,74 +44,72 @@ Esta es la demostración más directa del Modelo A funcionando en la práctica. 
 scripts/eval_log_line.py
 ```
 
-Parsea líneas de log en Combined Log Format (estándar de Nginx/Apache), extrae method y URL, computa las 23 features, y devuelve la predicción del modelo.
+Parses log lines in Combined Log Format (Nginx/Apache standard), extracts method and URL, computes the 23 features, and returns the model prediction.
 
 ```bash
-# Evaluar un log individual
+# Evaluate a single log
 MLFLOW_TRACKING_URI=http://localhost:5081 python scripts/eval_log_line.py '<log_line>'
 
-# Modo interactivo
+# Interactive mode
 MLFLOW_TRACKING_URI=http://localhost:5081 python scripts/eval_log_line.py --interactive
 ```
 
-### Caso — GET con SQL injection en query string
+### Case — GET with SQL injection in query string
 
 ```
 192.168.1.100 - - [14/Apr/2026:10:23:45 -0300] "GET /login?username=admin%27%20OR%201%3D1%20--&password=test HTTP/1.1" 200 1234 "-" "Mozilla/5.0"
 ```
 
-**Resultado:** 🔴 **ATAQUE** — Probabilidad: 100.0%
+**Result:** 🔴 **ATTACK** — Probability: 100.0%
 
-El modelo detecta correctamente el ataque. La URL contiene `%27%20OR%201%3D1%20--` (decodificado: `' OR 1=1 --`), un SQL injection clássico. Las features que activan la detección:
+The model correctly detects the attack. The URL contains `%27%20OR%201%3D1%20--` (decoded: `' OR 1=1 --`), a classic SQL injection. The features that trigger detection:
 
-| Feature | Valor | Qué indica |
+| Feature | Value | What it indicates |
 |---|---|---|
-| `url_pct_density` | 0.151 | Alta densidad de `%` (8% de la URL) — encoding atípico en tráfico normal |
-| `url_has_pct27` | 1 | `%27` (comilla simple codificada) — señal directa de SQLi |
-| `url_has_dashdash` | 1 | `--` (comentario SQL) — técnica común para truncar queries |
+| `url_pct_density` | 0.151 | High density of `%` (8% of the URL) — atypical encoding in normal traffic |
+| `url_has_pct27` | 1 | `%27` (encoded single quote) — direct signal of SQLi |
+| `url_has_dashdash` | 1 | `--` (SQL comment) — common technique to truncate queries |
 
-### Limitación
+### Limitation
 
-Los logs de access de Nginx/Apache **no contienen el body de los requests POST**. El ataque podría estar oculto en el body y no sería visible en el log. Para capturar bodies se necesita un WAF, proxy, o IDS que registre los payloads completos.
+Nginx/Apache access logs **do not contain the POST request body**. The attack could be hidden in the body and would not be visible in the log. To capture bodies, a WAF, proxy, or IDS is needed to record the full payloads.
 
-Ver el análisis completo en [Model A — Análisis post-training](model_a_analysis.md).
-
-Ver el análisis completo en [Model A — Análisis post-training](model_a_analysis.md).
+See the full analysis in [Model A — Post-training analysis](model_a_analysis.md).
 
 ---
 
-## Estado actual
+## Current status
 
-!!! warning "Phase 3 — Modelo A training ✅ | Phase 4 — Airflow + Docker ✅ | Phase 5 — API ✅"
-    **Modelo A (CSIC 2010):** 7 iteraciones de feature engineering.
+!!! warning "Phase 3 — Model A training ✅ | Phase 4 — Airflow + Docker ✅ | Phase 5 — API ✅"
+    **Model A (CSIC 2010):** 7 iterations of feature engineering.
     LightGBM: Recall 0.954 ✅ / Precision 0.793 ❌ (target 0.85) / ROC-AUC 0.968.
-    **API de inferencia** funcionando en puerto 5082: `/health`, `/features`, `/predict`.
-    **Docker Compose** con MLflow + Airflow + Postgres + API.
-    Análisis post-training completo: [Model A — Análisis post-training](model_a_analysis.md).
+    **Inference API** running on port 5082: `/health`, `/features`, `/predict`.
+    **Docker Compose** with MLflow + Airflow + Postgres + API.
+    Complete post-training analysis: [Model A — Post-training analysis](model_a_analysis.md).
 
-!!! info "Siguiente paso — Modelo B (UNSW-NB15)"
-    EDA completo. Preprocessing pendiente.
-    Ver el [roadmap completo](roadmap.md) y el [brief del proyecto](brief.md).
+!!! info "Next step — Model B (UNSW-NB15)"
+    EDA and preprocessing complete. Training pending.
+    See the [full roadmap](roadmap.md) and the [project brief](brief.md).
 
 ---
 
 ## Stack
 
-| Herramienta | Rol |
+| Tool | Role |
 |---|---|
-| Python 3.11 | Lenguaje principal |
-| scikit-learn | Modelos ML |
+| Python 3.11 | Main language |
+| scikit-learn | ML models |
 | MLflow | Experiment tracking |
-| Apache Airflow | Orquestación (Phase 2+) |
-| Jupyter | EDA y exploración |
+| Apache Airflow | Orchestration (Phase 2+) |
+| Jupyter | EDA and exploration |
 
 ---
 
-## Levantar la documentación localmente
+## Serve documentation locally
 
 ```bash
 pip install -r requirements-docs.txt
 mkdocs serve
 ```
 
-Abre [http://localhost:8000](http://localhost:8000) en el browser.
+Open [http://localhost:8000](http://localhost:8000) in the browser.

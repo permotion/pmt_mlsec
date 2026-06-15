@@ -1,48 +1,48 @@
 # MLflow
 
-## Instalación
+## Installation
 
-MLflow ya está instalado en el entorno virtual del proyecto (versión 3.11.1). Figura en `requirements.txt` como dependencia.
+MLflow is already installed in the project's virtual environment (version 3.11.1). It is listed in `requirements.txt` as a dependency.
 
 ```bash
-# Instalar todas las dependencias del proyecto (incluye MLflow)
+# Install all project dependencies (includes MLflow)
 pip install -r requirements.txt
 
-# O instalar solo MLflow
+# Or install only MLflow
 pip install mlflow
 ```
 
-Primera integración en código: `notebooks/experiments/csic2010_feature_analysis_v3.ipynb`.
+First integration in code: `notebooks/experiments/csic2010_feature_analysis_v3.ipynb`.
 
-## Levantar el servidor
+## Starting the server
 
 ```bash
-# Desde la raíz del proyecto
+# From the project root
 mlflow ui --backend-store-uri "sqlite:///mlflow.db"
 # → http://localhost:5000
 ```
 
-El backend store es `mlflow.db` (SQLite) en la raíz del proyecto. El file-based store (`mlruns/`) está deprecado en MLflow 3.x.
+The backend store is `mlflow.db` (SQLite) in the project root. The file-based store (`mlruns/`) is deprecated in MLflow 3.x.
 
-**Nota:** Los runs del v3 fueron creados antes de fijar el tracking URI y quedaron en `notebooks/experiments/mlruns/`. A partir del v4 todos los runs van al `mlflow.db` de la raíz.
+**Note:** Runs from v3 were created before setting the tracking URI and were left in `notebooks/experiments/mlruns/`. From v4 onwards, all runs go to the `mlflow.db` in the root.
 
 ---
 
-## Convenciones de naming
+## Naming conventions
 
-### Experiments (agrupan runs del mismo modelo)
-
-```
-mlsec-model-a          ← todos los runs del Modelo A
-mlsec-model-b          ← todos los runs del Modelo B
-```
-
-### Runs (cada entrenamiento individual)
+### Experiments (group runs of the same model)
 
 ```
-{modelo}-{algoritmo}-{descripcion}
+mlsec-model-a          ← all Model A runs
+mlsec-model-b          ← all Model B runs
+```
 
-Ejemplos:
+### Runs (each individual training)
+
+```
+{model}-{algorithm}-{description}
+
+Examples:
   model-a-logreg-baseline
   model-a-rf-feature-selection-v2
   model-b-xgboost-smote
@@ -50,9 +50,9 @@ Ejemplos:
 
 ---
 
-## Qué loggear en cada run
+## What to log in each run
 
-### Parámetros (`mlflow.log_param`)
+### Parameters (`mlflow.log_param`)
 ```python
 mlflow.log_param("model_type", "RandomForest")
 mlflow.log_param("n_estimators", 100)
@@ -62,7 +62,7 @@ mlflow.log_param("threshold", 0.45)
 mlflow.log_param("class_weight", "balanced")
 ```
 
-### Métricas (`mlflow.log_metric`)
+### Metrics (`mlflow.log_metric`)
 ```python
 mlflow.log_metric("precision", precision)
 mlflow.log_metric("recall", recall)
@@ -70,7 +70,7 @@ mlflow.log_metric("f1", f1)
 mlflow.log_metric("roc_auc", roc_auc)
 ```
 
-### Artefactos (`mlflow.log_artifact`)
+### Artifacts (`mlflow.log_artifact`)
 ```python
 mlflow.log_artifact("confusion_matrix.png")
 mlflow.log_artifact("feature_importance.png")
@@ -79,7 +79,7 @@ mlflow.sklearn.log_model(model, "model")
 
 ---
 
-## Ejemplo de run completo
+## Complete run example
 
 ```python
 import mlflow
@@ -88,7 +88,7 @@ import mlflow.sklearn
 mlflow.set_experiment("mlsec-model-b")
 
 with mlflow.start_run(run_name="model-b-rf-baseline"):
-    # Parámetros
+    # Parameters
     mlflow.log_param("model_type", "RandomForest")
     mlflow.log_param("n_estimators", 100)
     mlflow.log_param("dataset", "unsw_nb15")
@@ -98,13 +98,13 @@ with mlflow.start_run(run_name="model-b-rf-baseline"):
     model = RandomForestClassifier(n_estimators=100, random_state=42)
     model.fit(X_train, y_train)
 
-    # Métricas
+    # Metrics
     mlflow.log_metric("precision", precision_score(y_val, y_pred))
     mlflow.log_metric("recall", recall_score(y_val, y_pred))
     mlflow.log_metric("f1", f1_score(y_val, y_pred))
     mlflow.log_metric("roc_auc", roc_auc_score(y_val, y_proba))
 
-    # Modelo
+    # Model
     mlflow.sklearn.log_model(model, "model")
 ```
 
@@ -112,13 +112,47 @@ with mlflow.start_run(run_name="model-b-rf-baseline"):
 
 ## Model Registry
 
-Cuando un run supera los criterios de éxito del MVP, se registra:
+The deployment workflow uses the **MLflow Model Registry** to manage the model lifecycle.
+
+See the full document at [Model Registry — Deployment Workflow](model_registry.md).
+
+### Stages
+
+| Stage | Description |
+|---|---|
+| `Staging` | Candidate model — trained and evaluated |
+| `Production` | Active model — serving predictions |
+| `Archived` | Discarded model — replaced by a new one |
+
+### Candidate criteria (Model A)
+
+| Metric | Minimum |
+|---|---|
+| `test_recall` | ≥ 0.95 |
+| `test_precision` | ≥ 0.75 |
+| `gap_recall` | ≤ 0.05 |
+
+### Automatic registration
+
+In `train_model_a_pipeline.py`, upon successful training completion:
 
 ```python
-mlflow.register_model(
-    f"runs:/{run_id}/model",
-    "mlsec-model-b-production"
-)
+# If it passes criteria → register in Staging
+mlflow.register_model(f"runs://{run_id}/model", "mlsec-model-a", stage="Staging")
+
+# Tags
+client.set_model_version_tag(name, version, "deployment_stage", "candidate")
+client.set_model_version_tag(name, version, "trained_at", timestamp)
+```
+
+### Promotion script
+
+```bash
+# View models in Staging
+python scripts/promote_model_to_production.py --list
+
+# Promote to Production
+python scripts/promote_model_to_production.py
 ```
 
 ---
@@ -129,4 +163,4 @@ mlflow.register_model(
 mlruns/
 ```
 
-Los runs de MLflow son locales. No versionar.
+MLflow runs are local. Do not version.

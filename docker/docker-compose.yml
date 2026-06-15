@@ -62,6 +62,9 @@ services:
       --serve-artifacts
       --host 0.0.0.0
       --port 5000
+      --disable-workspaces --allowed-hosts "*"
+    environment:
+      MLFLOW_DISABLE_GUARDRAILS: "true"
     ports:
       - "5081:5000"
     volumes:
@@ -124,9 +127,10 @@ services:
     volumes:
       - mlflow-artifacts:/usr/share/nginx/html:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/"]
+      test: ["CMD", "nc", "-z", "localhost", "80"]
       interval: 10s
       retries: 3
+      start_period: 5s
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------

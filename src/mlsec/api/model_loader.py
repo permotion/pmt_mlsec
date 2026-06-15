@@ -19,12 +19,13 @@ from mlflow.tracking import MlflowClient
 
 ROOT = Path(__file__).resolve().parents[3]
 
-# Threshold calibrado en el último entrenamiento (DAG run 2026-04-13)
-# Este valor debería actualizarse cuando se reentrene con nuevas features.
-THRESHOLD = 0.2903
+# Threshold calibrado en val con features_v4.parquet (sin scaler — G1/G2)
+# Latest run: 2026-04-20 — threshold 0.3002
+# Para threshold de producción (99:1): 0.4723 — documentado en roadmap y glossary
+THRESHOLD = 0.3002
 
 # Versión del modelo — se muestra en las respuestas
-MODEL_VERSION = "v1-dag-2026-04-13"
+MODEL_VERSION = "v4-dag-2026-04-21"  # Pending: update after next re-training
 
 # ---------------------------------------------------------------------------
 # Carga desde pickle local
@@ -70,9 +71,10 @@ def load_model_from_mlflow(
     Returns:
         (model, scaler, threshold)
     """
+    import mlflow as _mlflow_local
     uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI")
     if uri:
-        mlflow.set_tracking_uri(uri)
+        _mlflow_local.set_tracking_uri(uri)
 
     client = MlflowClient()
 
@@ -109,7 +111,7 @@ def load_model_from_mlflow(
         artifact_uri = f"{ARTIFACT_PROXY}/{artifact_path}"
         print(f"Artefacto convertido a HTTP: {artifact_uri}")
 
-    local_path = mlflow.artifacts.download_artifacts(
+    local_path = _mlflow_local.artifacts.download_artifacts(
         artifact_uri=artifact_uri,
         dst_path="/tmp/mlflow_model",
     )
@@ -125,7 +127,12 @@ def load_model_from_mlflow(
         )
 
     with open(model_path, "rb") as f:
-        model = pickle.load(f)
+        try:
+            model, scaler, threshold = pickle.load(f)
+        except ValueError:
+            # MLflow sklearn.log_model solo guarda el modelo (sin tuple)
+            model = pickle.load(f)
+            scaler = None
 
     # Threshold — se loggea como parámetro
     threshold = float(run.data.params.get("threshold", THRESHOLD))
@@ -135,22 +142,115 @@ def load_model_from_mlflow(
 
 
 # ---------------------------------------------------------------------------
+# Carga desde MLflow Model Registry (por stage)
+# ---------------------------------------------------------------------------
+def load_model_from_registry(
+    stage: str = "Production",
+    experiment_name: str = "mlsec-model-a",
+    tracking_uri: str | None = None,
+) -> tuple:
+    """
+    Carga el modelo desde MLflow Model Registry usando alias (MLflow 3.x).
+
+    Args:
+        stage: Alias del modelo — "Production" (default), "Staging", o "Archived"
+        experiment_name: Nombre del registered model en MLflow
+        tracking_uri: URI del servidor MLflow
+
+    Returns:
+        (model, scaler, threshold)
+    """
+    # Normalizar a minúsculas (MLflow aliases son case-sensitive)
+    stage = stage.lower()
+
+    uri = tracking_uri or os.environ.get("MLFLOW_TRACKING_URI")
+    if uri:
+        import mlflow as _mlf
+        _mlf.set_tracking_uri(uri)
+
+    client = MlflowClient()
+
+    # MLflow 3.x: usar get_model_version_by_alias en vez de get_latest_versions(stages=[...])
+    try:
+        version = client.get_model_version_by_alias(experiment_name, stage)
+    except Exception as e:
+        raise RuntimeError(f"No hay modelo con alias '{stage}' en el registry '{experiment_name}': {e}") from e
+
+    print(f"Cargando modelo desde MLflow Registry: {experiment_name} v{version.version} (alias={stage})")
+
+    # Obtener threshold del run
+    run = client.get_run(version.run_id)
+    threshold = float(run.data.params.get("threshold", THRESHOLD))
+
+    # Descargar artefacto — MLflow 3.x usa models:/ URI, no file://
+    # mlflow.artifacts.download_artifacts() maneja ambos esquemas directamente
+    import mlflow as _mlf
+    local_path = _mlf.artifacts.download_artifacts(
+        artifact_uri=version.source,  # source es models:/m-xxx para MLflow 3.x
+        dst_path="/tmp/mlflow_model",
+    )
+
+    import pickle
+
+    model_path = Path(local_path)
+    # MLflow 3.x log_model guarda en directorio con MLmodel, no model.pkl
+    # Buscar el archivo de modelo real
+    if model_path.is_dir():
+        # Es un directorio — buscar MLmodel o el.pkl
+        if (model_path / "MLmodel").exists():
+            # MLflow 3.x format — cargar con mlflow.sklearn.load_model
+            import mlflow.sklearn as _mlflow_sklearn
+            model = _mlflow_sklearn.load_model(str(model_path))
+            scaler = None
+            return model, scaler, threshold
+        # Buscar cualquier .pkl en el directorio
+        pkl_files = list(model_path.glob("*.pkl"))
+        if pkl_files:
+            model_path = pkl_files[0]
+        else:
+            raise FileNotFoundError(f"No se encontró modelo en {local_path}")
+
+    with open(model_path, "rb") as f:
+        try:
+            model, scaler, threshold = pickle.load(f)
+        except ValueError:
+            # MLflow sklearn.log_model solo guarda el modelo (sin tuple)
+            model = pickle.load(f)
+            scaler = None
+
+    scaler = None
+    return model, scaler, threshold
+
+
+# ---------------------------------------------------------------------------
 # Interfaz unificada
 # ---------------------------------------------------------------------------
-def get_model():
+def get_model(stage: str = "Production"):
     """
-    Carga el modelo. Intenta pickle local primero, luego MLflow.
+    Carga el modelo. Por alias desde MLflow Registry (Production por default).
+
+    Fallback: si no hay registro en Registry, usa el archivo pickle local.
     """
+    # Normalizar a minúsculas (MLflow aliases son case-sensitive)
+    stage = stage.lower()
+
+    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
+    if tracking_uri:
+        try:
+            return load_model_from_registry(stage=stage, tracking_uri=tracking_uri)
+        except RuntimeError as e:
+            print(f"Registry no disponible: {e}")
+        except Exception as e:
+            import traceback
+            print(f"Error conectando a MLflow Registry: {type(e).__name__}: {e}")
+            traceback.print_exc()
+
+    # Fallback a pickle local
     if Path(MODEL_PATH).exists():
         print(f"Cargando modelo desde pickle: {MODEL_PATH}")
         return load_model_from_pickle()
 
-    tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
-    if tracking_uri:
-        print(f"Cargando modelo desde MLflow: {tracking_uri}")
-        return load_model_from_mlflow(tracking_uri=tracking_uri)
-
     raise RuntimeError(
-        "No se encontró modelo local y MLFLOW_TRACKING_URI no está seteado. "
-        f"Configurá MODEL_PATH o MLFLOW_TRACKING_URI."
+        "No se encontró modelo en Registry ni pickle local. "
+        f"Configurá MLFLOW_TRACKING_URI o verificá que exista {MODEL_PATH}."
     )

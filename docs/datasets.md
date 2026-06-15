@@ -1,89 +1,89 @@
 # Datasets
 
-## Convenciones
+## Conventions
 
-- Los archivos en `data/raw/` **nunca se modifican** — son la fuente de verdad
-- Cada dataset tiene: archivo(s) de datos, `README.md`, `LICENSE`, hash SHA-256
-- El procesamiento lee de `raw/` y escribe en `processed/`
-- Labels unificados: `0` = benign/normal · `1` = malicious/attack
+- Files in `data/raw/` **are never modified** — they are the source of truth
+- Each dataset has: data file(s), `README.md`, `LICENSE`, SHA-256 hash
+- Processing reads from `raw/` and writes to `processed/`
+- Unified labels: `0` = benign/normal · `1` = malicious/attack
 
 ---
 
 ## Dataset A — CSIC 2010
 
-**Modelo:** Web Attack Detection
+**Model:** Web Attack Detection
 
-| Campo | Valor |
+| Field | Value |
 |---|---|
-| Nombre | HTTP CSIC 2010 |
-| Fuente | CSIC (Spanish National Research Council) |
-| Tipo | HTTP requests (GET/POST) |
-| Clases | Normal / Anomalous (attacks) |
-| Tamaño | ~36.000 requests normales, ~25.000 ataques |
-| Formato | Texto plano (HTTP raw) |
-| Licencia | Para uso en investigación |
+| Name | HTTP CSIC 2010 |
+| Source | CSIC (Spanish National Research Council) |
+| Type | HTTP requests (GET/POST) |
+| Classes | Normal / Anomalous (attacks) |
+| Size | ~36,000 normal requests, ~25,000 attacks |
+| Format | Plain text (Raw HTTP) |
+| License | For research use |
 
-**Tipos de ataques incluidos:**
+**Included attack types:**
 SQL Injection, Buffer Overflow, Information Gathering, Files Disclosure,
 CRLF Injection, XSS, Parameter Tampering, CSRF
 
-**Ubicación local:**
+**Local path:**
 ```
 data/raw/csic2010/
-├── csic_database.csv          ← dataset completo (61.065 registros, labels 0/1)
+├── csic_database.csv          ← full dataset (61,065 records, 0/1 labels)
 ├── README.md
 └── CHECKSUMS.sha256
 ```
 
-**Nota:** La versión de Kaggle es un CSV pre-procesado. El original viene en
-archivos .txt de HTTP raw separados por split train/test.
+**Note:** The Kaggle version is a pre-processed CSV. The original comes in
+raw HTTP .txt files separated by train/test splits.
 
 **SHA-256:**
 ```
 c420f0bc0464376de75b6c419a0ac226fe69fe12c8ac4908843273721e44e637  csic_database.csv
 ```
 
-**Cómo descargar:**
+**How to download:**
 ```bash
-# Fuente original — requiere formulario de solicitud:
+# Original source — requires request form:
 # http://www.isi.csic.es/dataset/
-# Alternativa: buscar en Kaggle "CSIC 2010 HTTP dataset"
+# Alternative: search Kaggle for "CSIC 2010 HTTP dataset"
 ```
 
 ---
 
 ## Dataset B — UNSW-NB15
 
-**Modelo:** Network Attack Detection
+**Model:** Network Attack Detection
 
-| Campo | Valor |
+| Field | Value |
 |---|---|
-| Nombre | UNSW-NB15 |
-| Fuente | University of New South Wales, Canberra |
-| Tipo | Features de flujo de red (CSV) |
-| Clases | Normal / 9 categorías de ataque |
-| Tamaño | ~2.5M registros (~257MB CSV) |
-| Formato | CSV con 49 features |
-| Licencia | Para uso en investigación |
+| Name | UNSW-NB15 |
+| Source | University of New South Wales, Canberra |
+| Type | Network flow features (CSV) |
+| Classes | Normal / 9 attack categories |
+| Size | ~2.5M records (~257MB CSV) |
+| Format | CSV with 49 features |
+| License | For research use |
 
-**Categorías de ataque:**
+**Attack categories:**
 Fuzzers, Analysis, Backdoors, DoS, Exploits, Generic, Reconnaissance, Shellcode, Worms
 
-**Features clave:**
+**Key features:**
 `dur`, `proto`, `service`, `state`, `spkts`, `dpkts`, `sbytes`, `dbytes`,
 `rate`, `sttl`, `dttl`, `sload`, `dload`, `ct_srv_src`, `label`
 
-**Ubicación local:**
+**Local path:**
 ```
 data/raw/unsw_nb15/
-├── UNSW_NB15_training-set.parquet   ← 175.341 registros
-├── UNSW_NB15_testing-set.parquet    ← 82.332 registros
+├── UNSW_NB15_training-set.parquet   ← 175,341 records
+├── UNSW_NB15_testing-set.parquet    ← 82,332 records
 ├── README.md
 └── CHECKSUMS.sha256
 ```
 
-**Nota:** La versión de Kaggle (dhoogla/unswnb15) viene en formato Parquet
-con split train/test oficial y 36 columnas (35 features + label). Labels en `0/1`.
+**Note:** The Kaggle version (dhoogla/unswnb15) comes in Parquet format
+with official train/test split and 36 columns (35 features + label). Labels in `0/1`.
 
 **SHA-256:**
 ```
@@ -91,21 +91,21 @@ f6989e65032e75770f37a5fa64d1d556effd6ac6240c99b0ab4df73b490c1918  UNSW_NB15_trai
 a0270aeb2219aaa686551cdf6d4f94c4478b69f819225176149606cd1492d5e1  UNSW_NB15_testing-set.parquet
 ```
 
-**Cómo descargar:**
+**How to download:**
 ```bash
-# Fuente oficial:
+# Official source:
 # https://research.unsw.edu.au/projects/unsw-nb15-dataset
-# También disponible en Kaggle: "UNSW-NB15"
+# Also available on Kaggle: "UNSW-NB15"
 ```
 
 ---
 
-## Checklist de ingesta
+## Ingestion checklist
 
-Antes de dar por completa la ingesta de un dataset:
+Before considering a dataset ingestion complete:
 
-- [ ] Archivos descargados en `data/raw/{dataset}/`
-- [ ] Hash SHA-256 calculado y guardado en `CHECKSUMS.sha256`
-- [ ] `README.md` con fuente, fecha de descarga y licencia
-- [ ] Esta página actualizada con el hash verificado
-- [ ] Dataset visible desde el notebook de EDA
+- [ ] Files downloaded to `data/raw/{dataset}/`
+- [ ] SHA-256 hash calculated and saved in `CHECKSUMS.sha256`
+- [ ] `README.md` with source, download date, and license
+- [ ] This page updated with verified hash
+- [ ] Dataset accessible from EDA notebook

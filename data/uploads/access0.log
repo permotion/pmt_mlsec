@@ -1,0 +1,5 @@
+192.168.1.100 - - [20/Apr/2026:10:23:45 -0300] "GET /login?username=admin%27%20OR%201%3D1%20--&password=test HTTP/1.1" 200 1234 "-" "Mozilla/5.0"
+192.168.1.101 - - [20/Apr/2026:10:24:00 -0300] "GET /api/users HTTP/1.1" 200 500 "-" "curl/7.68.0"
+192.168.1.102 - - [20/Apr/2026:10:25:15 -0300] "POST /search?q=test HTTP/1.1" 200 800 "-" "Mozilla/5.0"
+192.168.1.103 - - [20/Apr/2026:10:26:30 -0300] "GET /admin<script>alert(1)</script> HTTP/1.1" 404 200 "-" "python-requests/2.28"
+192.168.1.104 - - [20/Apr/2026:10:27:45 -0300] "GET /api/health HTTP/1.1" 200 50 "-" "curl/7.68.0"

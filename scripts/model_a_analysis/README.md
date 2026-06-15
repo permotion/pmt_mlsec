@@ -1,21 +1,21 @@
-# Model A — Análisis post-training
+# Model A — Post-training analysis
 
-Scripts para evaluar y caracterizar el modelo post-training.
+Scripts to evaluate and characterize the model post-training.
 
-## Requisitos
+## Requirements
 
-- Modelo descargado desde MLflow (los scripts lo descargan automáticamente)
+- Model downloaded from MLflow (scripts download it automatically)
 - Dataset `data/processed/csic2010/features_v4.parquet`
-- Variables de entorno: `MLFLOW_TRACKING_URI` (default: `http://localhost:5081`)
+- Environment variables: `MLFLOW_TRACKING_URI` (default: `http://localhost:5081`)
 
-## Cómo ejecutar
+## How to run
 
 ```bash
 cd "/Users/permotion/Desktop/repositories/PERMOTION/PMT MLSec"
 source .venv/bin/activate
 MLFLOW_TRACKING_URI=http://localhost:5081 python scripts/model_a_analysis/threshold_sweep.py
 
-# 2. Análisis de FP/FN
+# 2. FP/FN analysis
 python fp_analysis.py
 
 # 3. Feature importance
@@ -25,11 +25,11 @@ python feature_importance.py
 python ablation.py
 ```
 
-## Descripción de scripts
+## Script descriptions
 
-| Script | Qué hace |
+| Script | What it does |
 |---|---|
-| `threshold_sweep.py` | Curva Precision/Recall/F1 vs threshold (0.10–0.80) |
-| `fp_analysis.py` | Caracterización de los 938 FP y 300 FN |
-| `feature_importance.py` | Gain de cada feature en LightGBM |
-| `ablation.py` | Impacto de remover cada grupo de features |
+| `threshold_sweep.py` | Precision/Recall/F1 curve vs threshold (0.10–0.80) |
+| `fp_analysis.py` | Characterization of the 938 FPs and 300 FNs |
+| `feature_importance.py` | Gain of each feature in LightGBM |
+| `ablation.py` | Impact of removing each feature group |

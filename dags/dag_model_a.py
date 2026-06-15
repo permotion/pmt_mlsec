@@ -1,8 +1,8 @@
 """
-DAG — Modelo A (CSIC 2010) — Web Attack Detection
+DAG - Modelo A (CSIC 2010) - Web Attack Detection
 
 Pipeline:
-    verify_data → preprocess → train → evaluate
+    verify_data -> preprocess -> train -> register -> evaluate
 
 Compatible con Docker y con entorno local.
 
@@ -12,7 +12,7 @@ En Docker:
   - MLFLOW_TRACKING_URI=http://mlflow:5000
 
 En local:
-  - MLSEC_PYTHON defaults a .venv/bin/python
+  - MLSEC_PYTHON defaults to .venv/bin/python
   - Trigger: manual (schedule=None)
 """
 
@@ -49,7 +49,7 @@ def check_raw_data():
 
 with DAG(
     dag_id="dag_model_a",
-    description="Modelo A — Web Attack Detection (CSIC 2010)",
+    description="Modelo A - Web Attack Detection (CSIC 2010)",
     schedule=None,
     start_date=datetime(2026, 1, 1),
     catchup=False,
@@ -71,6 +71,11 @@ with DAG(
         bash_command=f"{PYTHON} {TRAIN_SCRIPT} --features {DATA_OUT} --min-recall 0.955",
     )
 
+    register = BashOperator(
+        task_id="register",
+        bash_command=f"{PYTHON} {TRAIN_SCRIPT} --register-only",
+    )
+
     evaluate = BashOperator(
         task_id="evaluate",
         bash_command=(
@@ -83,4 +88,4 @@ with DAG(
         ),
     )
 
-    verify_data >> preprocess >> train >> evaluate
+    verify_data >> preprocess >> train >> register >> evaluate

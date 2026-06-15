@@ -4,7 +4,7 @@ site_author: Permotion
 
 theme:
   name: material
-  language: es
+  language: en
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -12,14 +12,14 @@ theme:
       accent: deep purple
       toggle:
         icon: material/brightness-7
-        name: Modo oscuro
+        name: Dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: indigo
       accent: deep purple
       toggle:
         icon: material/brightness-4
-        name: Modo claro
+        name: Light mode
   features:
     - navigation.tabs
     - navigation.sections
@@ -33,31 +33,41 @@ theme:
     repo: fontawesome/brands/github
 
 nav:
-  - Inicio: index.md
+  - Home: index.md
   - Roadmap: roadmap.md
   - Brief: brief.md
   - Datasets: datasets.md
   - EDA: eda.md
-  - Modelo A:
-    - Resumen: model_a/index.md
+  - Model A:
+    - Overview: model_a/index.md
     - Baseline: model_a/baseline.md
-    - v1 — Análisis de features: model_a/v1.md
+    - v1 — Feature analysis: model_a/v1.md
     - v2 — URL features: model_a/v2.md
     - v3 — Content POST + MLflow: model_a/v3.md
     - v4 — URL structure GET: model_a/v4.md
-    - v5 — Calibración threshold: model_a/v5.md
+    - v5 — Threshold calibration: model_a/v5.md
     - v6 — content_param_density: model_a/v6.md
     - v7 — Latin-1 encoding: model_a/v7.md
-    - Análisis post-training: model_a_analysis.md
-  - Modelo B:
-    - Estado actual: model_b/index.md
-  - Experimentos (convenciones): experiments.md
+    - Hyperparameter tuning: model_a_hyperparameter_tuning.md
+    - Post-training analysis: model_a_analysis.md
+  - Model B:
+    - Current status: model_b/index.md
+  - Experiments (conventions): experiments.md
   - MLflow:
-    - Setup y convenciones: mlflow.md
-    - Cómo leer un run: mlflow_runs.md
+    - Setup and conventions: mlflow.md
+    - Model Registry: model_registry.md
+    - Runs: mlflow_runs.md
   - Airflow: airflow.md
-  - API — FastAPI: api.md
-  - Glosario: glossary.md
+  - API: api.md
+  - MLOps + AIOps + Blue Team: mlops_aiops_blue_team.md
+  - End-to-end flow: flux_end_to_end.md
+  - RACI: raci_model_lifecycle.md
+  - Red Team:
+    - Guide: red_team/index.md
+    - Technical: red_team_agent.md
+  - Blue Team:
+    - Guide: blue_team/index.md
+  - Glossary: glossary.md
 
 markdown_extensions:
   - admonition
@@ -83,9 +93,11 @@ markdown_extensions:
 
 plugins:
   - search:
-      lang: es
+      lang: en
 
 extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/permotion
+
+dev_addr: "0.0.0.0:8001"

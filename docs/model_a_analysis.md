@@ -1,19 +1,19 @@
-# Model A — Análisis post-training
+# Model A — Post-training analysis
 
-Este documento registra las pruebas realizadas sobre el modelo final (LightGBM, features v4, threshold 0.2903, run `04c9235a`) para caracterizar su comportamiento y limitaciones.
+This document records the tests performed on the final model (LightGBM, features v4, threshold 0.2903, run `04c9235a`) to characterize its behavior and limitations.
 
-**Fecha de los análisis:** 2026-04-14
-**Modelo:** LightGBM (`mlsec-model-a`, run `04c9235a`)
-**Dataset:** CSIC 2010 — `features_v4.parquet` (61,065 requests HTTP, 41% ataques)
-**Validation set:** 42,745 samples (70/30 stratified split, mismo split que el DAG de entrenamiento)
+**Date of analysis:** 2026-04-14
+**Model:** LightGBM (`mlsec-model-a`, run `04c9235a`)
+**Dataset:** CSIC 2010 — `features_v4.parquet` (61,065 HTTP requests, 41% attacks)
+**Validation set:** 42,745 samples (70/30 stratified split, same split as the training DAG)
 
 ---
 
-## 1. Threshold sweep — curvatura Precision/Recall
+## 1. Threshold sweep — Precision/Recall curve
 
-### Metodología
+### Methodology
 
-Se recorre el threshold de decisión desde 0.10 hasta 0.78 en pasos de 0.02. Para cada threshold se computan Precision, Recall, F1, FP y FN sobre el validation set (n=42,745).
+The decision threshold is swept from 0.10 to 0.78 in steps of 0.02. For each threshold, Precision, Recall, F1, FP and FN are computed on the validation set (n=42,745).
 
 ```python
 proba = model.predict_proba(X_val)[:, 1]
@@ -22,7 +22,7 @@ for t in np.arange(0.10, 0.80, 0.02):
     tp, fp, fn = ...
 ```
 
-### Resultados
+### Results
 
 ```
 threshold,precision,recall,f1,fp,fn
@@ -37,95 +37,95 @@ threshold,precision,recall,f1,fp,fn
 0.78,0.4136,0.9741,0.5806,24235,455
 ```
 
-### Análisis
+### Analysis
 
-**El threshold tiene un efecto binario, no gradual.** Desde 0.10 hasta 0.70 inclusive, todos los valores producen exactamente el mismo resultado: Recall=1.0 y 25,200 FP (todos los requests normales predichos como ataque). Recién a partir de 0.72 empiezan a aparecer FN.
+**The threshold has a binary effect, not a gradual one.** From 0.10 to 0.70 inclusive, all values produce exactly the same result: Recall=1.0 and 25,200 FP (all normal requests predicted as attack). Only starting at 0.72 do FNs start to appear.
 
-Este comportamiento es resultado directo de `scale_pos_weight=1.44`:
+This behavior is a direct result of `scale_pos_weight=1.44`:
 
-- El modelo asigna probabilidades extremadamente altas a los requests normales
-- Esto se debe al reweighting que infla la probabilidad de la clase positiva (ataque)
-- Con threshold 0.29, cualquier request con `P(ataque) >= 0.29` se marca como ataque
-- La mínima probabilidad asignada a un normal en el validation set es **0.7025** (ver sección FP)
+- The model assigns extremely high probabilities to normal requests
+- This is due to reweighting that inflates the probability of the positive class (attack)
+- With a 0.29 threshold, any request with `P(attack) >= 0.29` is marked as an attack
+- The minimum probability assigned to a normal in the validation set is **0.7025** (see FP section)
 
-### Conclusiones
+### Conclusions
 
-1. **Con el modelo actual (con `scale_pos_weight`), el threshold de 0.29 está en la "meseta" inferior.** Cualquier valor entre 0.10 y 0.70 produce el mismo resultado: todos los requests se predicen como ataque.
+1. **With the current model (with `scale_pos_weight`), the 0.29 threshold is on the lower "plateau".** Any value between 0.10 and 0.70 produces the same result: all requests are predicted as attack.
 
-2. **El threshold 0.2903 fue calibrado en el DAG para Recall ≥ 0.955 sobre el validation set.** Dado que `scale_pos_weight` distorsiona las probabilidades, el threshold resultante es bajo (0.29) pero la calibración se hizo sobre la distribución real del validation set.
+2. **The 0.2903 threshold was calibrated in the DAG for Recall ≥ 0.955 on the validation set.** Since `scale_pos_weight` distorts probabilities, the resulting threshold is low (0.29) but the calibration was done on the validation set's true distribution.
 
-3. **Para usar probabilidades absolutas como score de confianza, el modelo debería ser reentrenado sin `scale_pos_weight`.** Esto es un pendiente documentado en Phase 5 del roadmap.
+3. **To use absolute probabilities as a confidence score, the model should be retrained without `scale_pos_weight`.** This is a documented pending item in Phase 5 of the roadmap.
 
-4. **A threshold 0.72 el modelo recién empieza a cometer FN.** Esto confirma que el modelo tiene Recall alto (cumple ≥ 0.95 en training y validation) pero a costa de una Precision baja (~0.41 en el validation set completo, ~0.79 en el subset que el modelo sí puede discriminar).
+4. **At threshold 0.72 the model just begins to commit FNs.** This confirms that the model has high Recall (meets ≥ 0.95 in training and validation) but at the cost of low Precision (~0.41 on the full validation set, ~0.79 on the subset the model can discriminate).
 
 ---
 
-## 2. Análisis de Falsos Positivos
+## 2. False Positive Analysis
 
-### Metodología
+### Methodology
 
-Se identifican los requests del validation set predichos como ataque (`proba >= 0.2903`) pero cuyo label real es 0 (normal). Se caracterizan por método, features textuales y distribución de probabilidades.
+Validation set requests predicted as attack (`proba >= 0.2903`) but whose real label is 0 (normal) are identified. They are characterized by method, textual features, and probability distribution.
 
-### Resultados
+### Results
 
 ```
 === FP distribution by method ===
 method_is_get     28000
 method_is_post     8000
-Total FP: 36000 (sobre validation set completo de 42,745 samples)
+Total FP: 36000 (over full validation set of 42,745 samples)
 
 === FP stats ===
-FP con url_has_pct27=1:     47   (0.13%)
-FP con url_has_pct3c=1:       0   (0.00%)
-FP con url_has_dashdash=1:   0   (0.00%)
-FP con url_has_script=1:      0   (0.00%)
-FP con url_has_select=1:      1   (0.00%)
-FP con content_length>0:   8000   (22%) — todos POST
+FP with url_has_pct27=1:     47   (0.13%)
+FP with url_has_pct3c=1:       0   (0.00%)
+FP with url_has_dashdash=1:   0   (0.00%)
+FP with url_has_script=1:      0   (0.00%)
+FP with url_has_select=1:      1   (0.00%)
+FP with content_length>0:   8000   (22%) — all POST
 
-=== Distribución de probabilidad de los FP ===
-[0.29, 0.70):  0        ← ningún FP es "borderline"
+=== FP probability distribution ===
+[0.29, 0.70):  0        ← no FP is "borderline"
 [0.70, 0.80):  1596     (4.4%)
 [0.80, 0.90):  1399     (3.9%)
-[0.90, 1.00]: 33005     (91.7%)  ← la gran mayoría con probabilidad muy alta
+[0.90, 1.00]: 33005     (91.7%)  ← the vast majority with very high probability
 
 FP proba min: 0.7025
 FP proba max: 1.0000
 FP proba median: 0.9914
 ```
 
-### Análisis
+### Analysis
 
-**Los FP no son errores "borderline".** El 91.7% de los FP tiene probabilidad > 0.90 — errores muy confiantes, no casos dudosos en los que el modelo "se pelea" entre las dos clases.
+**FPs are not "borderline" errors.** 91.7% of FPs have probability > 0.90 — very confident errors, not doubtful cases where the model "struggles" between the two classes.
 
-**Los FP son casi exclusivamente requests GET normales con URLs largas.** No tienen indicadores típicos de ataque (`%27`, `%3C`, `--`, etc.) — son falsos positivos puros del patrón statistical del modelo.
+**FPs are almost exclusively normal GET requests with long URLs.** They lack typical attack indicators (`%27`, `%3C`, `--`, etc.) — they are pure false positives of the model's statistical pattern.
 
-**Contenido principal de los FP:**
-- GET a URLs de longitud media-alta (media=79, std=59)
-- Pocos parámetros en query string
-- Sin indicadores de encoding ni SQLi/XSS
-- El 78% son GET, 22% POST
+**Main content of FPs:**
+- GET to medium-high length URLs (mean=79, std=59)
+- Few parameters in query string
+- No encoding or SQLi/XSS indicators
+- 78% are GET, 22% POST
 
-**El modelo está sesgado hacia predecir ataque para cualquier request "raro"** (longitud inusual, estructura atípica), aunque no tenga ningún indicador de ataque explícito.
+**The model is biased towards predicting attack for any "weird" request** (unusual length, atypical structure), even if it has no explicit attack indicator.
 
-### Conclusiones
+### Conclusions
 
-1. **Los 938 FP reportados en el DAG (sobre ~18K samples del test set) son una fracción.** Sobre el validation set completo (25,200 normals) hay 36,000 FP. La diferencia se debe a que el DAG usó un scaler diferente o que el test set tiene una distribución distinta.
+1. **The 938 FPs reported in the DAG (out of ~18K test set samples) are a fraction.** Over the full validation set (25,200 normals) there are 36,000 FPs. The difference is due to the DAG using a different scaler or the test set having a different distribution.
 
-2. **No hay "borderline cases"** — la distribución bimodal de los FP (ninguno entre 0.29-0.70, mayoria >0.90) indica que el modelo tiene una decisión clara en la mayoría de los casos.
+2. **There are no "borderline cases"** — the bimodal distribution of FPs (none between 0.29-0.70, majority >0.90) indicates the model has a clear decision in most cases.
 
-3. **Los FP requieren parseo semántico de parámetros** — requests normales con URLs largasactivan el modelo, pero la diferencia entre un parámetro benigno (`?id=123`) y uno malicioso (`?id=1' OR 1=1--`) requiere analizar el *valor* del parámetro, no solo su presencia o longitud.
+3. **FPs require semantic parameter parsing** — normal requests with long URLs trigger the model, but the difference between a benign parameter (`?id=123`) and a malicious one (`?id=1' OR 1=1--`) requires analyzing the parameter's *value*, not just its presence or length.
 
-4. **FN = 0 en el validation set completo.** El modelo no deja pasar ataques. Esto confirma que el Recall alto (1.0 en validation) es real y no un artefacto del split.
+4. **FN = 0 on the full validation set.** The model does not let attacks pass. This confirms that the high Recall (1.0 on validation) is real and not an artifact of the split.
 
 ---
 
-## 3. Feature importance (Gain de LightGBM)
+## 3. Feature importance (LightGBM Gain)
 
-### Metodología
+### Methodology
 
-Se extrae `feature_importances_` (gain) del modelo LightGBM cargado desde MLflow. El gain representa la mejora promedio en la función de pérdida que cada split aporta, promediada sobre todos los árboles.
+`feature_importances_` (gain) is extracted from the LightGBM model loaded from MLflow. Gain represents the average improvement in the loss function that each split provides, averaged over all trees.
 
-### Resultados
+### Results
 
 ```
 url_length                  1575.0  ██████████████████████████████
@@ -153,39 +153,39 @@ content_has_script             0.0
 url_has_dashdash              0.0
 ```
 
-### Análisis
+### Analysis
 
-**`url_length` domina absolutamente** — casi el doble de importancia que la segunda feature. Esto sugiere que el modelo depende fuertemente de si una URL es "larga" o "corta" como señal primaria.
+**`url_length` dominates absolutely** — almost twice the importance of the second feature. This suggests the model heavily relies on whether a URL is "long" or "short" as a primary signal.
 
-**Las features de encoding (`pct_density`) son más importantes que los indicadores booleanos (`has_pct27`).** `content_pct_density` (#9) y `url_pct_density` (#5) rankean muy alto, mientras que `url_has_pct27` (#10) tiene importance baja.
+**Encoding features (`pct_density`) are more important than boolean indicators (`has_pct27`).** `content_pct_density` (#9) and `url_pct_density` (#5) rank very high, while `url_has_pct27` (#10) has low importance.
 
-**Los indicadores booleanos puros (`url_has_script`, `url_has_select`, `url_has_dashdash`) tienen importance cercana a cero.** Esto indica que cuando aparecen en el dataset, probablemente ya están capturados por las features de densidad.
+**Pure boolean indicators (`url_has_script`, `url_has_select`, `url_has_dashdash`) have near-zero importance.** This indicates that when they appear in the dataset, they are probably already captured by the density features.
 
-**`method_is_put` tiene importance moderada (52)** — refleja que PUT = 100% ataques en CSIC 2010, pero al haber pocos PUT en el dataset, su contribución al gain total es limitada.
+**`method_is_put` has moderate importance (52)** — reflects that PUT = 100% attacks in CSIC 2010, but since there are few PUTs in the dataset, its contribution to the total gain is limited.
 
-**`url_has_query` = 0** — la simple presencia/ausencia de query string no aporta señal más allá de lo que ya capturan `url_query_length` y `url_param_count`.
+**`url_has_query` = 0** — the mere presence/absence of a query string provides no signal beyond what `url_query_length` and `url_param_count` already capture.
 
-### Conclusiones
+### Conclusions
 
-1. **El modelo aprende patrones de "tamaño y forma" más que patrones semánticos de ataque.** Las features continuas (length, density) dominan sobre las binarias (has_pct27, has_script).
+1. **The model learns "size and shape" patterns more than semantic attack patterns.** Continuous features (length, density) dominate over binary ones (has_pct27, has_script).
 
-2. **Las features de encoding (pct_density) son las más informativos después de url_length.** Reflejan que los ataques en CSIC 2010 usan URL encoding para evadir detection, mientras que el tráfico normal usa texto literal.
+2. **Encoding features (pct_density) are the most informative after url_length.** They reflect that attacks in CSIC 2010 use URL encoding to evade detection, while normal traffic uses literal text.
 
-3. **Los indicadores booleanos individuales (`has_script`, `has_select`) son redundantes con las densities** — cuando el modelo necesita detectar "script", la densidad de `%` ya se lo dice de forma más robusta.
+3. **Individual boolean indicators (`has_script`, `has_select`) are redundant with densities** — when the model needs to detect "script", the `%` density already tells it more robustly.
 
-4. **Feature engineering futuro debería priorizar:** densidad de caracteres especiales por categoría (no solo `%` genérico), entropía de la URL, y diversidad de caracteres.
+4. **Future feature engineering should prioritize:** special character density per category (not just generic `%`), URL entropy, and character diversity.
 
 ---
 
-## 4. Feature Ablation — impacto de remover grupos
+## 4. Feature Ablation — impact of removing groups
 
-### Metodología
+### Methodology
 
-Por cada grupo de features, se entrena un nuevo LightGBM **sin ese grupo** y se evalúa Recall y Precision sobre el validation set con el threshold calibrado (0.2903). La diferencia vs. el baseline revela la importancia relativa de cada grupo.
+For each feature group, a new LightGBM is trained **without that group** and Recall and Precision are evaluated on the validation set with the calibrated threshold (0.2903). The difference vs. the baseline reveals the relative importance of each group.
 
-**Grupos:**
+**Groups:**
 
-| Grupo | Features | Cantidad |
+| Group | Features | Count |
 |---|---|---|
 | `method` | method_is_get, method_is_post, method_is_put | 3 |
 | `url_struct` | url_length, url_param_count, url_pct_density, url_path_depth, url_query_length, url_has_query | 6 |
@@ -193,12 +193,12 @@ Por cada grupo de features, se entrena un nuevo LightGBM **sin ese grupo** y se 
 | `content_struct` | content_length, content_pct_density, content_param_count, content_param_density | 4 |
 | `content_text` | content_has_pct27, content_has_pct3c, content_has_dashdash, content_has_script, content_has_select | 5 |
 
-### Resultados
+### Results
 
 ```
 Baseline (all features): Recall=1.0000  Precision=0.4105  threshold=0.2903
 
-Grupo removido              Recall   Precision  delta Recall
+Group removed               Recall   Precision  delta Recall
 ------------------------------------------------------------
 method (3)                  0.9475      0.7882       -0.0525
 url_text (5)                0.9543      0.7894       -0.0457
@@ -207,73 +207,73 @@ content_struct (4)          0.9600      0.6836       -0.0400
 url_struct (6)              0.9892      0.4433       -0.0108
 ```
 
-### Análisis
+### Analysis
 
-**Sin `method` (PUT/GET/POST), el Recall cae 5.25 puntos (de 1.0 a 0.9475).** Esto es la caída más grande de todos los grupos. El método es la señal más discriminativa específicamente porque PUT tiene 100% de ataques en CSIC 2010.
+**Without `method` (PUT/GET/POST), Recall drops 5.25 points (from 1.0 to 0.9475).** This is the largest drop of all groups. The method is the most discriminative signal specifically because PUT is 100% attack in CSIC 2010.
 
-**Sin `url_struct`, la Precision sube de 0.41 a 0.44 pero Recall cae solo 1 punto.** Esto confirma que las features estructurales de URL (longitud, cantidad de parámetros) son las que generan la mayoría de los FP — requests normales con URLs atípicas se confunden con ataques.
+**Without `url_struct`, Precision rises from 0.41 to 0.44 but Recall drops only 1 point.** This confirms that structural URL features (length, parameter count) are what generate the most FPs — normal requests with atypical URLs are confused with attacks.
 
-**Sin `url_text`, Recall cae 4.57 puntos (a 0.9543).** Los indicadores de SQLi/XSS (`%27`, `%3C`, etc.) son importantes para Recall, confirmando que capturan patrones de ataque legítimos.
+**Without `url_text`, Recall drops 4.57 points (to 0.9543).** SQLi/XSS indicators (`%27`, `%3C`, etc.) are important for Recall, confirming they capture legitimate attack patterns.
 
-**Sin `content_text`, Recall cae 4.45 puntos (a 0.9555).** Mismo patrón que URL: los indicadores de encoding en el body son señal真实的.
+**Without `content_text`, Recall drops 4.45 points (to 0.9555).** Same pattern as URL: encoding indicators in the body are real signals.
 
-**Sin `content_struct` (length, densities), Recall cae solo 4 puntos pero Precision sube 27 puntos (de 0.41 a 0.68).** Esto es clave: las features estructurales de contenido son las principales responsables de los FP. Requests normales con body largo o alta densidad de `%` se confunden con ataques.
+**Without `content_struct` (length, densities), Recall drops only 4 points but Precision jumps 27 points (from 0.41 to 0.68).** This is key: structural content features are the main culprits for FPs. Normal requests with long bodies or high `%` density are confused with attacks.
 
-### Conclusiones
+### Conclusions
 
-1. **`method` es el grupo más importante para Recall.** Sin él, el modelo pierde 5.25 pp de Recall. Esto se debe a que PUT es 100% ataque en CSIC 2010 — una señal perfecta pero no generalizable a otros datasets.
+1. **`method` is the most important group for Recall.** Without it, the model loses 5.25 pp of Recall. This is because PUT is 100% attack in CSIC 2010 — a perfect signal but not generalizable to other datasets.
 
-2. **Las features textuales (`url_text`, `content_text`) explican ~9 pp de Recall en conjunto.** Juntas (10 features) aportan casi tanto como las features estructurales.
+2. **Textual features (`url_text`, `content_text`) account for ~9 pp of Recall together.** Together (10 features) they contribute almost as much as structural features.
 
-3. **`content_struct` es el grupo más problemático para Precision.** Removerlo mejora Precision de 0.41 a 0.68 — un salto enorme. Esto indica que `content_length` y `content_pct_density` son las features que más FP generan.
+3. **`content_struct` is the most problematic group for Precision.** Removing it improves Precision from 0.41 to 0.68 — a huge jump. This indicates that `content_length` and `content_pct_density` are the features generating the most FPs.
 
-4. **`url_struct` tiene el menor impacto en Recall (-1.08 pp) pero el mayor impacto en Precision cuando se remueve solo parcialmente (subida a 0.44).** La tensión entre url_struct y content_struct explica el techo de Precision del modelo.
+4. **`url_struct` has the least impact on Recall (-1.08 pp) but the greatest impact on Precision when partially removed (rise to 0.44).** The tension between url_struct and content_struct explains the model's Precision ceiling.
 
-5. **El techo de Precision (~0.79) observado en training no puede améliorarse significativamente sin remover `content_struct` o `url_struct`, lo cual sacrificaría Recall.** Este trade-off es fundamental y explica por qué el modelo acepta Precision 0.79 como "techo práctico".
+5. **The Precision ceiling (~0.79) observed in training cannot be significantly improved without removing `content_struct` or `url_struct`, which would sacrifice Recall.** This trade-off is fundamental and explains why the model accepts 0.79 Precision as a "practical ceiling".
 
 ---
 
-## Síntesis — Hallazgos clave
+## Synthesis — Key findings
 
-| Hallazgo | Evidencia |
+| Finding | Evidence |
 |---|---|
-| El modelo no discrimina bien entre requests normales "atípicos" y ataques reales | 91.7% de los FP tienen proba > 0.90, ninguno está entre 0.29-0.70 |
-| `content_struct` (length, pct_density) es la fuente principal de FP | Sin content_struct, Precision sube de 0.41 → 0.68 |
-| `method` (especialmente PUT) es la señal más poderosa para Recall | Sin method, Recall cae 5.25 pp |
-| `url_length` es la feature individual más importante | Gain 1575 — casi 2x la segunda |
-| Los indicadores booleanos (`has_pct27`) son redundantes con las densities | Importance casi cero |
-| `scale_pos_weight` distorsiona las probabilidades absolutas | Todos los normales tienen proba ≥ 0.70, threshold 0.29 está en meseta |
+| The model does not discriminate well between "atypical" normal requests and real attacks | 91.7% of FPs have proba > 0.90, none are between 0.29-0.70 |
+| `content_struct` (length, pct_density) is the main source of FPs | Without content_struct, Precision rises from 0.41 → 0.68 |
+| `method` (especially PUT) is the most powerful signal for Recall | Without method, Recall drops 5.25 pp |
+| `url_length` is the most important individual feature | Gain 1575 — almost 2x the second |
+| Boolean indicators (`has_pct27`) are redundant with densities | Near-zero importance |
+| `scale_pos_weight` distorts absolute probabilities | All normals have proba ≥ 0.70, 0.29 threshold is on a plateau |
 
-### Implicaciones para el MVP
+### Implications for the MVP
 
-1. **El modelo cumple Recall ≥ 0.95** — detecta la gran mayoría de los ataques en CSIC 2010.
-2. **El techo de Precision (~0.79-0.80) es un límite del enfoque**, no un bug — se necesitaría parseo semántico de parámetros para mejorar significativamente.
-3. **Para un sistema de producción**, los 938 FP por ~18K requests normales implican un ratio de 1 FP cada ~19 requests — demasiado ruido para un detector en línea sin segunda capa de validación.
-4. **El modelo es útil como herramienta de triaje**: puede filtrar tráfico altamente sospechoso para revisión manual, pero no como decisor automático de bloqueo.
+1. **The model meets Recall ≥ 0.95** — it detects the vast majority of attacks in CSIC 2010.
+2. **The Precision ceiling (~0.79-0.80) is an approach limit**, not a bug — semantic parameter parsing would be needed to improve significantly.
+3. **For a production system**, the 938 FPs per ~18K normal requests imply a ratio of 1 FP every ~19 requests — too much noise for an online detector without a second validation layer.
+4. **The model is useful as a triage tool**: it can filter highly suspicious traffic for manual review, but not as an automatic blocking decision-maker.
 
 ---
 
-## Scripts de análisis
+## Analysis scripts
 
-### Scripts de evaluación post-training
+### Post-training evaluation scripts
 
-Ubicados en `scripts/model_a_analysis/`:
+Located in `scripts/model_a_analysis/`:
 
 ```
 scripts/model_a_analysis/
-├── threshold_sweep.py     # curva P/R vs threshold
-├── fp_analysis.py         # caracterización de FP/FN
-├── feature_importance.py  # gain de cada feature
-└── ablation.py           # impacto de remover grupos
+├── threshold_sweep.py     # P/R vs threshold curve
+├── fp_analysis.py         # FP/FN characterization
+├── feature_importance.py  # gain of each feature
+└── ablation.py           # impact of removing groups
 ```
 
-### Script de evaluación de logs reales
+### Real log evaluation script
 
 ```
-scripts/eval_log_line.py   # evalúa requests desde log lines reales
+scripts/eval_log_line.py   # evaluates requests from real log lines
 ```
 
-Para ejecutarlos:
+To run them:
 
 ```bash
 MLFLOW_TRACKING_URI=http://localhost:5081 python scripts/model_a_analysis/threshold_sweep.py
@@ -281,113 +281,388 @@ MLFLOW_TRACKING_URI=http://localhost:5081 python scripts/model_a_analysis/fp_ana
 MLFLOW_TRACKING_URI=http://localhost:5081 python scripts/model_a_analysis/feature_importance.py
 MLFLOW_TRACKING_URI=http://localhost:5081 python scripts/model_a_analysis/ablation.py
 
-# Evaluación de logs reales
+# Real log evaluation
 MLFLOW_TRACKING_URI=http://localhost:5081 python scripts/eval_log_line.py --interactive
 ```
 
-**Requerimientos:**
-- Docker con MLflow corriendo en puerto 5081
-- Artefactos accesibles via nginx proxy en puerto 5083
-- `.venv` con dependencias: `pandas`, `numpy`, `scikit-learn`, `lightgbm`, `mlflow`, `requests`
+**Requirements:**
+- Docker with MLflow running on port 5081
+- Artifacts accessible via nginx proxy on port 5083
+- `.venv` with dependencies: `pandas`, `numpy`, `scikit-learn`, `lightgbm`, `mlflow`, `requests`
 
 ---
 
-## 5. Evaluación de requests reales via script
+## 5. Real request evaluation via script
 
-Esta es la prueba más directa del modelo: tomar un request HTTP real (en formato de log de Nginx/Apache) y preguntar directamente al modelo si es ataque o normal.
+This is the most direct test of the model: take a real HTTP request (in Nginx/Apache log format) and ask the model directly if it's an attack or normal.
 
 ### Script: `eval_log_line.py`
 
-**Ubicación:** `scripts/eval_log_line.py`
+**Location:** `scripts/eval_log_line.py`
 
-Este script parsea líneas de log en Combined Log Format (el formato estándar de Nginx y Apache), extrae method y URL, computa las 23 features, y devuelve la predicción del modelo.
+This script parses log lines in Combined Log Format (the standard Nginx and Apache format), extracts method and URL, computes the 23 features, and returns the model's prediction.
 
-#### Uso
+#### Usage
 
 ```bash
-# Evaluar una línea de log individual
+# Evaluate a single log line
 MLFLOW_TRACKING_URI=http://localhost:5081 python scripts/eval_log_line.py '<log_line>'
 
-# Modo interactivo (ingresar logs uno por uno)
+# Interactive mode (enter logs one by one)
 MLFLOW_TRACKING_URI=http://localhost:5081 python scripts/eval_log_line.py --interactive
 ```
 
-#### Cómo funciona internamente
+#### How it works internally
 
 ```
-Línea de log (Combined Log Format)
+Log line (Combined Log Format)
         │
         ▼
 ┌───────────────────────┐
-│  Parser regex          │  Extrae: method, uri, query_string, time_local
-│  (LOG_PATTERN)         │  No puede extraer body — los access logs no lo contienen
+│  Regex parser          │  Extracts: method, uri, query_string, time_local
+│  (LOG_PATTERN)         │  Cannot extract body — access logs do not contain it
 └───────────────────────┘
         │
         ▼
 ┌───────────────────────┐
-│  extract_features()    │  Computa las 23 features (method, URL, content)
-│                        │  Misma lógica que preprocess_csic_v4.py
+│  extract_features()    │  Computes the 23 features (method, URL, content)
+│                        │  Same logic as preprocess_csic_v4.py
 └───────────────────────┘
         │
         ▼
 ┌───────────────────────┐
-│  LightGBM.predict_proba │  Devuelve P(ataque)
-│  vs threshold 0.2903   │  prediction = ATAQUE si proba >= 0.2903
+│  LightGBM.predict_proba │  Returns P(attack)
+│  vs threshold 0.2903   │  prediction = ATTACK if proba >= 0.2903
 └───────────────────────┘
         │
         ▼
-   Resultado: ATAQUE / NORMAL
+   Result: ATTACK / NORMAL
 ```
 
-### Caso de prueba 1 — GET con SQL injection en query string
+### Test case 1 — GET with SQL injection in query string
 
 ```
 192.168.1.100 - - [14/Apr/2026:10:23:45 -0300] "GET /login?username=admin%27%20OR%201%3D1%20--&password=test HTTP/1.1" 200 1234 "-" "Mozilla/5.0"
 ```
 
-**Resultado:**
+**Result:**
 
 ```
-🔴 ATAQUE
-   Probabilidad: 100.0% (threshold: 29.0%)
+🔴 ATTACK
+   Probability: 100.0% (threshold: 29.0%)
    Method: GET
    URL: /login?username=admin%27%20OR%201%3D1%20--&password=test
-   Body: (vacío — GET)
+   Body: (empty — GET)
 ```
 
-**Análisis de features extraídas:**
+**Extracted features analysis:**
 
-| Feature | Valor | Qué indica |
+| Feature | Value | What it indicates |
 |---|---|---|
-| `method_is_get` | 1 | Método GET |
-| `url_length` | 53 | Longitud de la URL completa |
-| `url_param_count` | 2 | Dos parámetros (`username=` y `password=`) |
-| `url_pct_density` | 0.151 | 8 `%` en 53 caracteres — muy alto (típico: 0.00–0.05) |
-| `url_has_pct27` | **1** | `%27` detectado — encoding de comilla simple `'`. Señal directa de SQLi |
-| `url_has_pct3c` | 0 | Sin `%3C` (encoding de `<`) |
-| `url_has_dashdash` | **1** | `--` detectado — comentario SQL |
-| `url_has_script` | 0 | Sin la palabra `script` |
-| `url_has_select` | 0 | Sin la palabra `SELECT` |
-| `content_length` | 0 | GET no tiene body |
+| `method_is_get` | 1 | GET Method |
+| `url_length` | 53 | Full URL length |
+| `url_param_count` | 2 | Two parameters (`username=` and `password=`) |
+| `url_pct_density` | 0.151 | 8 `%` in 53 characters — very high (typical: 0.00–0.05) |
+| `url_has_pct27` | **1** | `%27` detected — single quote `'` encoding. Direct SQLi signal |
+| `url_has_pct3c` | 0 | No `%3C` (`<` encoding) |
+| `url_has_dashdash` | **1** | `--` detected — SQL comment |
+| `url_has_script` | 0 | No `script` word |
+| `url_has_select` | 0 | No `SELECT` word |
+| `content_length` | 0 | GET has no body |
 
-**Desglose del ataque:** la URL contiene `%27%20OR%201%3D1%20--` que se decodifica a `' OR 1=1 --` — un SQL injection clássico. El modelo detecta:
-1. Alta densidad de `%` (URL encoding de caracteres especiales)
-2. Presencia de `%27` (comilla simple codificada)
-3. Presencia de `--` (comentario SQL)
+**Attack breakdown:** the URL contains `%27%20OR%201%3D1%20--` which decodes to `' OR 1=1 --` — a classic SQL injection. The model detects:
+1. High density of `%` (URL encoding of special characters)
+2. Presence of `%27` (encoded single quote)
+3. Presence of `--` (SQL comment)
 
-Este es un acierto correcto del modelo. El ataque es real y el modelo lo detecta con 100% de "confianza".
+This is a correct hit from the model. The attack is real and the model detects it with 100% "confidence".
 
 ---
 
-### Limitación: los access logs no contienen el body
+### Limitation: access logs do not contain the body
 
-**Los logs de access de Nginx/Apache no tienen el body de los requests POST.** El ataque podría estar oculto en el body (`username=admin' OR 1=1--&password=test`) y no sería visible en el log. El script `eval_log_line.py`只能 evaluar la URL visible — el body real queda oculto.
+**Nginx/Apache access logs do not have the body of POST requests.** The attack could be hidden in the body (`username=admin' OR 1=1--&password=test`) and would not be visible in the log. The `eval_log_line.py` script can only evaluate the visible URL — the actual body remains hidden.
 
-Para evaluar bodies POST completos se necesita:
-- Logs de un WAF o proxy que capture bodies
-- Un sistema de instrumentation que registre los payloads
-- Traffic analysis de un IDS/IPS
+To evaluate complete POST bodies, you need:
+- Logs from a WAF or proxy that captures bodies
+- An instrumentation system that records payloads
+- Traffic analysis from an IDS/IPS
 
-### Conclusión
+### Conclusion
 
-El modelo detecta correctamente ataques SQL injection visibles en la URL con 100% de probabilidad. La limitación fundamental de este método de evaluación es que los access logs no exponen los bodies de los requests POST — que es donde se ocultan la mayoría de los ataques SQLi y XSS.
+The model correctly detects visible SQL injection attacks in the URL with 100% probability. The fundamental limitation of this evaluation method is that access logs do not expose POST request bodies — which is where most SQLi and XSS attacks hide.
+
+---
+
+## 6. Distribution shift — Test set 99:1 (G5)
+
+**Date:** 2026-04-20
+**Script:** `scripts/model_a_analysis/test_real_distribution.py`
+
+### Context
+
+The CSIC 2010 dataset has 41% attacks and 59% normal. Real production typically has ~1% attacks. This extreme imbalance changes how the model's predictions are interpreted.
+
+### Methodology
+
+1. Take the original test set (9160 samples, 41% attacks → 5416 normal, 3744 attack)
+2. Resample keeping all attacks and a normal sample for a 99:1 ratio
+   - Result: 5400 samples (~54 attacks, ~5346 normal)
+3. Evaluate with the dataset threshold (0.3002) and calculate corrected threshold for Recall ≥ 0.95 at 99:1
+
+### Comparative results
+
+| Metric | Dataset (41%) | 99:1 (~1%) | Delta |
+|---|---|---|---|
+| Threshold used | 0.3002 | 0.3002 | — |
+| Recall | 95.43% | 100.00% | +4.57% |
+| Precision | 79.29% | 5.48% | **-73.81%** |
+| FP rate | 17.35% | 17.41% | +0.06% |
+| FP (absolute) | 937 | 931 | -6 |
+| TN | 4463 | 4415 | -48 |
+| FN | 172 | 0 | -172 |
+
+### Interpretation
+
+**The same threshold (0.3002) produces radically different results in each distribution:**
+
+- **Dataset (41% attacks):** 79% Precision — out of every 100 attack predictions, ~79 are correct
+- **Production (1% attacks):** 5% Precision — out of every 100 attack predictions, only ~5 are correct
+
+The model detects all attacks at 99:1 (100% Recall) but generates many false alarms. For every ~15 attack predictions, there are 14 FPs.
+
+**FP rate remains similar** (17.35% → 17.41%) because it is a proportion of the normals, not the total. But the operational impact is very different: in production, every normal request classified as an attack is an alert the analyst has to review.
+
+### Corrected threshold for production
+
+**Method:** precision-recall curve on 99:1 test set. Find minimum threshold that maintains Recall ≥ 0.95.
+
+| Parameter | Value |
+|---|---|
+| Dataset threshold (41%) | 0.3002 |
+| Corrected threshold (99:1) | **0.4723** |
+| **Gap** | **+0.1721** |
+
+**Metrics with corrected threshold (99:1):**
+
+| Metric | Value | Criterion |
+|---|---|---|
+| Recall | 96.30% | ✅ ≥ 95% |
+| Precision | 7.51% | ❌ very low |
+| FP rate | 12.66% | ⚠️ high |
+| FP (absolute) | 677 | vs 931 with original threshold |
+
+**Effect:** raising the threshold from 0.3002 to 0.4723 reduces FPs from 931 to 677 (↓27%) while maintaining 96.30% Recall.
+
+### Diagnosis: why is Precision so low in production
+
+1. **`scale_pos_weight=1.44`** — calibrated for 41% dataset, does not reflect ~1% production. The model remains biased towards predicting attacks.
+
+2. **Continuous features get confused with legitimate normal traffic** — `url_length`, `content_length` trigger on normal requests with long URLs/bodies (e.g. APIs with many parameters).
+
+3. **No semantic analysis** — the model cannot distinguish between `/api/users?id=123` (normal) and `/api/users?id=1' OR 1=1--` (attack) based purely on length and `%` density.
+
+### Documented decision
+
+**Current production threshold: 0.3002** (NOT changed)
+
+**Documented threshold for future recalibration: 0.4723**
+
+**Criterion to reconsider:** if production FP rate exceeds 20%, recalibrate to 0.4723.
+
+**Future:** re-train the model with data reflecting the real distribution (99:1 ratio) and adjust `scale_pos_weight` accordingly.
+
+---
+
+## 7. Action plan — Re-training with 99:1 distribution
+
+### Current problem diagnosis
+
+The current model was trained and calibrated with the CSIC 2010 dataset (41% attacks). In production (~1% attacks):
+
+- `scale_pos_weight=1.44` does not reflect reality
+- Threshold 0.3002 is calibrated for 41% attacks
+- Precision drops drastically in production (79% → 5.5%)
+- FP rate remains high (~17%)
+
+### Re-training objective
+
+Produce a model whose threshold and probability calibration is consistent with the real production distribution (~1% attacks).
+
+---
+
+### Phase A — Data preparation (99:1)
+
+**A1 — Create training dataset with 99:1 distribution**
+
+```python
+# Pseudocode — script: prepare_99_1_dataset.py
+df = pd.read_parquet("data/processed/csic2010/features_v4.parquet")
+attacks = df[df['label'] == 1]   # all attacks
+normal = df[df['label'] == 0]    # all normals
+
+# Keep all attacks, sample normals for ~99:1 ratio
+n_attacks = len(attacks)
+n_normal_target = int(n_attacks * 99)  # ~99 normals for each attack
+
+normal_sampled = normal.sample(n=n_normal_target, random_state=42)
+df_99 = pd.concat([attacks, normal_sampled]).sample(frac=1, random_state=42)
+
+# Save
+df_99.to_parquet("data/processed/csic2010/features_v4_99_1.parquet")
+```
+
+**A2 — Estimate correct `scale_pos_weight` for 99:1**
+
+```
+scale_pos_weight = neg / pos = 99 / 1 = 99
+
+(Instead of the current 1.44 calculated for 41% attacks)
+```
+
+**A3 — Validate resulting dataset size**
+
+| dataset | Samples | Attacks | Ratio |
+|---|---|---|---|
+| Original (41%) | 61,065 | 25,047 | 1.44:1 |
+| 99:1 (target) | ~25,400 | ~254 | 99:1 |
+
+⚠️ With 254 attacks the training set would be very small. Alternative strategy: see Phase B.
+
+---
+
+### Phase B — Strategy if 99:1 dataset is too small
+
+**If 254 attacks are not enough to train:**
+
+**Option B1 — Undersampling + ensemble**
+- Keep the full 25,047 attacks
+- Sample 25,047 normals (~1:1 ratio, not 1:99)
+- Train multiple models with different normal undersamples
+- Average predictions
+
+**Option B2 — SMOTE on minority attacks**
+- Keep 25,047 attacks
+- SMOTE to generate more attack examples (up to ~50K)
+- Combine with normal undersampling to reach 99:1
+- Train with `scale_pos_weight=99`
+
+**Option B3 — Attack data augmentation**
+- Generate synthetic attacks with variations of existing patterns
+- Augment minority class until having enough mass for 99:1
+- Use techniques: character-level mutations, SQLi template variations
+
+**Initial recommendation:** Option B2 (SMOTE + undersampling) — balance between data quantity and correct distribution.
+
+---
+
+### Phase C — Model re-training
+
+**C1 — Update `train_model_a_pipeline.py`**
+
+```python
+# In train_model_a_pipeline.py
+
+# Option A: use 99:1 dataset directly
+df = pd.read_parquet("data/processed/csic2010/features_v4_99_1.parquet")
+scale_pos_weight = 99  # instead of dataset neg/pos
+
+# Option B: keep original dataset but adjust scale_pos_weight
+# Calculate based on target distribution, not dataset
+TARGET_ATTACK_RATE = 0.01  # 1% in production
+scale_pos_weight = (1 - TARGET_ATTACK_RATE) / TARGET_ATTACK_RATE  # = 99
+```
+
+**C2 — Calibrate val threshold with 99:1 distribution**
+
+```python
+# Find threshold that maximizes Precision while keeping Recall >= 0.95
+# on val set with 99:1 distribution (or whatever reflects production)
+val_proba = model.predict_proba(X_val)[:, 1]
+threshold = find_best_threshold(y_val, val_proba, min_recall=0.95)
+```
+
+**C3 — Log `train_recall` and `test_recall`**
+
+Already implemented (G8) — keep to detect overfitting.
+
+---
+
+### Phase D — Post re-training validation
+
+**D1 — Test set with 99:1 distribution**
+
+Use `test_real_distribution.py` script to verify:
+- Recall ≥ 0.95 ✅
+- FP rate < 5% (target)
+- Precision > 50% (target)
+
+**D2 — Test set with original distribution (41%)**
+
+Verify the model also works well on the original dataset distribution:
+- Recall ≥ 0.95 ✅
+- Precision ≥ 0.75 (MVP criterion)
+- ROC-AUC ≥ 0.96 ✅
+
+**D3 — Compare with 0.4723 threshold**
+
+The 0.4723 threshold calculated with the current model should be similar to the one resulting from the new training. If it differs significantly, investigate why.
+
+---
+
+### Phase E — Update API and documentation
+
+**E1 — Update `src/mlsec/api/model_loader.py`**
+
+```python
+# When the new model is in production:
+THRESHOLD = 0.XXXX  # threshold calibrated with 99:1 distribution
+MODEL_VERSION = "v2-training-99-1-YYYY-MM-DD"
+```
+
+**E2 — Document changes in `docs/model_a_analysis.md`**
+
+- New section: "99:1 Re-training — Results"
+- Update thresholds table
+- Document lessons learned
+
+**E3 — Update glossary if there are new terms**
+
+---
+
+### Plan summary
+
+```
+PHASE A: Prepare 99:1 data
+  └─ A1: Create 99:1 dataset (or validate it's too small)
+  └─ A2: Calculate scale_pos_weight = 99
+  └─ A3: Validate size
+
+PHASE B: Strategy if small dataset
+  └─ B2: SMOTE + undersampling (recommended)
+
+PHASE C: Re-training
+  └─ C1: Update train_model_a_pipeline.py
+  └─ C2: Calibrate val threshold with 99:1
+  └─ C3: Keep train/test recall logging
+
+PHASE D: Validation
+  └─ D1: 99:1 test (Recall, FP rate, Precision)
+  └─ D2: 41% test (Recall, Precision, ROC-AUC)
+  └─ D3: Compare with 0.4723 threshold
+
+PHASE E: Deploy
+  └─ E1: Update model_loader.py
+  └─ E2: Document results
+  └─ E3: Glossary update if needed
+```
+
+---
+
+### Related terms in glossary
+
+- **Distribution shift** — dataset vs production distribution change
+- **Test set 99:1** — real distribution validation method
+- **scale_pos_weight** — effect on probabilities and production
+- **SMOTE (Synthetic Minority Oversampling Technique)** — technique to generate synthetic samples
+- **False Positive rate (FPR)** — FPR in context of distribution shift

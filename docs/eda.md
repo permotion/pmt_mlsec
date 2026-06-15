@@ -1,498 +1,498 @@
 # EDA (Exploratory Data Analysis)
 
-## Qué es y cuál es su rol
+## What it is and its role
 
-El EDA es la **investigación inicial de los datos** — se hace antes de construir cualquier pipeline. Su objetivo es entender la estructura del dataset, detectar problemas de calidad, y decidir qué features construir para el modelo.
+EDA is the **initial investigation of the data** — it is done before building any pipeline. Its goal is to understand the dataset's structure, detect quality issues, and decide which features to build for the model.
 
 ```
-[Ingesta]  →  [EDA]  →  [Preprocessing]  →  [Training]  →  [Experimentos]  →  [Registry]
+[Ingestion]  →  [EDA]  →  [Preprocessing]  →  [Training]  →  [Experiments]  →  [Registry]
                 ↑               ↑                                  ↑
-         exploración       implementación                    iteración sobre
-         de datos          de decisiones                     modelo entrenado
-         sin modelo        del EDA                           con resultados
+         data exploration   implementation                     iteration over
+         without model      of EDA decisions                   trained model
+                                                               with results
 ```
 
-**Outputs del EDA:**
+**EDA Outputs:**
 
-1. **Conocimiento** — qué columnas usar, dónde viven los ataques, cómo tratar los nulos
-2. **Decisiones de preprocessing** — qué normalizar, cómo encodear categóricas, estrategia para desbalance
-3. **Features candidatas** — variables que el modelo va a recibir como input
+1. **Knowledge** — which columns to use, where attacks live, how to handle nulls
+2. **Preprocessing decisions** — what to normalize, how to encode categoricals, imbalance strategy
+3. **Candidate features** — variables that the model will receive as input
 
-Cuando el notebook madura, las transformaciones se convierten en scripts con `/refactor-notebook`.
+When the notebook matures, transformations become scripts with `/refactor-notebook`.
 
-### EDA vs Preprocessing vs Experimento
+### EDA vs Preprocessing vs Experiment
 
-| | EDA | Preprocessing | Experimento |
+| | EDA | Preprocessing | Experiment |
 |---|---|---|---|
-| **Pregunta** | ¿Qué hay en los datos? | ¿Cómo transformo los datos? | ¿Por qué falla el modelo? |
-| **Punto de partida** | Sin modelo | Decisiones del EDA | Modelo entrenado con resultados |
-| **Output** | Conocimiento + decisiones | Features listas para training | Decisión de mejora |
-| **Vive en** | `notebooks/eda/` | `src/mlsec/data/` | `notebooks/experiments/` |
-| **Cambia con el tiempo** | No — es documentación estable | Solo si cambian las decisiones | Sí — itera con cada experimento |
+| **Question** | What's in the data? | How do I transform the data? | Why does the model fail? |
+| **Starting point** | Without model | EDA decisions | Trained model with results |
+| **Output** | Knowledge + decisions | Features ready for training | Decision for improvement |
+| **Lives in** | `notebooks/eda/` | `src/mlsec/data/` | `notebooks/experiments/` |
+| **Changes over time** | No — it's stable documentation | Only if decisions change | Yes — iterates with each experiment |
 
 ---
 
-## Estado
+## Status
 
 | Dataset | Notebook | EDA | Preprocessing |
 |---|---|---|---|
-| CSIC 2010 | `notebooks/eda/csic2010_eda.ipynb` | ✅ completo | ✅ `src/mlsec/data/preprocess_csic.py` |
-| UNSW-NB15 | `notebooks/eda/unsw_nb15_eda.ipynb` | ✅ completo | ✅ `src/mlsec/data/preprocess_unsw.py` |
+| CSIC 2010 | `notebooks/eda/csic2010_eda.ipynb` | ✅ complete | ✅ `src/mlsec/data/preprocess_csic.py` |
+| UNSW-NB15 | `notebooks/eda/unsw_nb15_eda.ipynb` | ✅ complete | ✅ `src/mlsec/data/preprocess_unsw.py` |
 
 ---
 
 ## EDA — CSIC 2010
 
-**Modelo:** A — Web Attack Detection  
-**Archivo:** `data/raw/csic2010/csic_database.csv`  
-**Completado:** 2026-04-06 / 2026-04-10
+**Model:** A — Web Attack Detection  
+**File:** `data/raw/csic2010/csic_database.csv`  
+**Completed:** 2026-04-06 / 2026-04-10
 
 ---
 
-### Estructura del dataset
+### Dataset structure
 
-- **Shape:** 61.065 filas × 17 columnas
-- **Columnas originales:** `Unnamed: 0`, `Method`, `User-Agent`, `Pragma`, `Cache-Control`, `Accept`, `Accept-encoding`, `Accept-charset`, `language`, `host`, `cookie`, `content-type`, `connection`, `lenght`, `content`, `classification`, `URL`
+- **Shape:** 61,065 rows × 17 columns
+- **Original columns:** `Unnamed: 0`, `Method`, `User-Agent`, `Pragma`, `Cache-Control`, `Accept`, `Accept-encoding`, `Accept-charset`, `language`, `host`, `cookie`, `content-type`, `connection`, `lenght`, `content`, `classification`, `URL`
 
 ---
 
-### El label
+### The label
 
-!!! success "Label listo — sin transformación necesaria"
-    `classification` ya está en `int64` con valores `[0, 1]`.  
-    No necesita mapping. Columna renombrada a `label` para claridad.
+!!! success "Label ready — no transformation needed"
+    `classification` is already `int64` with values `[0, 1]`.  
+    No mapping needed. Column renamed to `label` for clarity.
 
-- `Unnamed: 0` tiene el texto "Normal"/"Anomalous" — es redundante con el label, se descarta
+- `Unnamed: 0` has the text "Normal"/"Anomalous" — redundant with the label, discard it
 - `0` = Normal, `1` = Attack
 
 ---
 
-### Distribución de clases
+### Class distribution
 
-| Clase | Registros | % |
+| Class | Records | % |
 |---|---|---|
-| Normal (0) | 36.000 | 59% |
-| Attack (1) | 25.065 | 41% |
+| Normal (0) | 36,000 | 59% |
+| Attack (1) | 25,065 | 41% |
 
-Desbalance **leve** — no requiere SMOTE. Estrategia: `class_weight='balanced'` en el modelo.
+**Mild** imbalance — no SMOTE required. Strategy: `class_weight='balanced'` in the model.
 
 ---
 
-### Distribución de métodos HTTP
+### HTTP methods distribution
 
 | Method | Normal | Attack | % Attack |
 |---|---|---|---|
-| GET | 28.000 | 15.088 | 35% |
-| POST | 8.000 | 9.580 | 54% |
+| GET | 28,000 | 15,088 | 35% |
+| POST | 8,000 | 9,580 | 54% |
 | PUT | 0 | **397** | **100%** |
 
-!!! danger "Hallazgo crítico — PUT = 100% ataques"
-    Toda request PUT en el dataset es maliciosa.  
-    `method_is_put` es la feature con mayor poder discriminativo — clasifica 397 ataques con precisión perfecta con un solo bit.
+!!! danger "Critical finding — PUT = 100% attacks"
+    Every PUT request in the dataset is malicious.  
+    `method_is_put` is the most discriminative feature — classifies 397 attacks with perfect precision with a single bit.
 
-**Dónde viven los ataques según el método:**
+**Where attacks live according to method:**
 
-- **GET** → el ataque está en la `URL` (query string — SQLi, XSS)
-- **POST** → el ataque está en `content` (body del request)
-- **PUT** → el método en sí es el indicador de ataque
+- **GET** → attack is in the `URL` (query string — SQLi, XSS)
+- **POST** → attack is in `content` (request body)
+- **PUT** → the method itself is the attack indicator
 
 ---
 
-### Nulos
+### Nulls
 
-| Columna | Nulos | % | Causa | Estrategia |
+| Column | Nulls | % | Cause | Strategy |
 |---|---|---|---|---|
-| `content` | 43.088 | 70.56% | Requests GET no tienen body | No imputar — rellenar con `""` o `0` |
-| `lenght` | 43.088 | 70.56% | Requests GET no tienen body | `content_length = 0` para GETs |
-| `content-type` | 43.088 | 70.56% | Requests GET no tienen body | Descartar — constante entre no-nulos |
-| `Accept` | 397 | 0.65% | Desconocida | Descartar — columna constante |
+| `content` | 43,088 | 70.56% | GET requests have no body | Do not impute — fill with `""` or `0` |
+| `lenght` | 43,088 | 70.56% | GET requests have no body | `content_length = 0` for GETs |
+| `content-type` | 43,088 | 70.56% | GET requests have no body | Discard — constant among non-nulls |
+| `Accept` | 397 | 0.65% | Unknown | Discard — constant column |
 
-Los 43.088 nulos corresponden exactamente a los requests GET. **No es un error de calidad de datos** — es el diseño del protocolo HTTP (los GETs no tienen body).
+The 43,088 nulls correspond exactly to GET requests. **This is not a data quality error** — it's HTTP protocol design (GETs have no body).
 
 ---
 
-### Columnas descartadas
+### Discarded columns
 
-| Columna | Razón |
+| Column | Reason |
 |---|---|
-| `Unnamed: 0` | Redundante con label |
-| `User-Agent` | Constante — 1 único valor en todo el dataset |
-| `Pragma` | Constante — 1 único valor |
-| `Cache-Control` | Constante — 1 único valor |
-| `Accept` | Constante — 1 único valor |
-| `Accept-encoding` | Constante — 1 único valor |
-| `Accept-charset` | Constante — 1 único valor |
-| `language` | Constante — 1 único valor |
-| `content-type` | Constante entre no-nulos |
-| `host` | 2 valores, sin señal útil |
-| `connection` | 2 valores, sin señal útil |
+| `Unnamed: 0` | Redundant with label |
+| `User-Agent` | Constant — 1 unique value across dataset |
+| `Pragma` | Constant — 1 unique value |
+| `Cache-Control` | Constant — 1 unique value |
+| `Accept` | Constant — 1 unique value |
+| `Accept-encoding` | Constant — 1 unique value |
+| `Accept-charset` | Constant — 1 unique value |
+| `language` | Constant — 1 unique value |
+| `content-type` | Constant among non-nulls |
+| `host` | 2 values, no useful signal |
+| `connection` | 2 values, no useful signal |
 
-**Total: 11 columnas eliminadas** de 17 originales. Quedan 6 con información útil: `Method`, `cookie`, `lenght`, `content`, `URL`, `label`.
-
----
-
-### Análisis de URL length
-
-Las distribuciones de longitud de URL se solapan entre normal y ataque — ambas concentradas en 50-100 chars. Los ataques tienen cola más larga (~400 chars vs ~330 en normales).
-
-**Conclusión:** `url_length` sola no discrimina bien, pero aporta como feature **combinada** con los indicadores de texto.
+**Total: 11 columns dropped** out of 17 original. 6 remain with useful info: `Method`, `cookie`, `lenght`, `content`, `URL`, `label`.
 
 ---
 
-### Correlación de indicadores en URL con label
+### URL length analysis
 
-!!! warning "Hallazgo crítico — URL encoding"
-    Los caracteres especiales `'`, `"`, `<`, `>`, `;` **nunca aparecen crudos** en las URLs.  
-    Los atacantes siempre los codifican (`%27`, `%3C`, etc.) para evadir filtros.  
-    El feature engineering debe buscar las versiones **percent-encoded**, no los literales.
+URL length distributions overlap between normal and attack — both concentrated around 50-100 chars. Attacks have a longer tail (~400 chars vs ~330 in normal).
 
-| Indicador | Significado | Correlación con label |
+**Conclusion:** `url_length` alone does not discriminate well, but adds value as a **combined** feature with text indicators.
+
+---
+
+### Correlation of URL indicators with label
+
+!!! warning "Critical finding — URL encoding"
+    Special characters `'`, `"`, `<`, `>`, `;` **never appear raw** in URLs.  
+    Attackers always encode them (`%27`, `%3C`, etc.) to evade filters.  
+    Feature engineering must look for the **percent-encoded** versions, not the literals.
+
+| Indicator | Meaning | Correlation with label |
 |---|---|---|
 | `url_has_pct27` | `%27` = `'` URL-encoded | **0.183** |
-| `url_has_dashdash` | `--` = comentario SQL | **0.148** |
-| `url_has_script` | keyword XSS | **0.137** |
+| `url_has_dashdash` | `--` = SQL comment | **0.148** |
+| `url_has_script` | XSS keyword | **0.137** |
 | `url_has_pct3c` | `%3C` = `<` URL-encoded | **0.124** |
-| `url_has_select` | keyword SQL SELECT | 0.050 |
-| `url_has_union` | keyword SQL UNION | ~0.000 — descartar |
-| `'`, `"`, `<`, `>`, `;` crudos | Caracteres literales | NaN — nunca aparecen |
+| `url_has_select` | SQL SELECT keyword | 0.050 |
+| `url_has_union` | SQL UNION keyword | ~0.000 — discard |
+| Raw `'`, `"`, `<`, `>`, `;` | Literal characters | NaN — never appear |
 
 ---
 
-### Análisis del content (body POST)
+### Analysis of content (POST body)
 
-| Métrica | Normal | Attack |
+| Metric | Normal | Attack |
 |---|---|---|
-| Requests POST totales | 8.000 | 9.580 |
-| Content length — media | 91.6 chars | 123.2 chars |
-| Content length — mediana | 47.5 chars | 72.0 chars |
+| Total POST requests | 8,000 | 9,580 |
+| Content length — mean | 91.6 chars | 123.2 chars |
+| Content length — median | 47.5 chars | 72.0 chars |
 | Content length — P75 | 110.5 chars | **243.0 chars** |
-| Content length — máximo | 307 chars | **836 chars** |
+| Content length — max | 307 chars | **836 chars** |
 
-Ataques POST tienen body **35% más largo en promedio** con cola mucho más pesada. `content_length` es una feature discriminativa para requests POST.
+POST attacks have **35% longer bodies on average** with a much heavier tail. `content_length` is a discriminative feature for POST requests.
 
 ---
 
-### Decisiones de preprocessing
+### Preprocessing decisions
 
-| Decisión | Detalle |
+| Decision | Detail |
 |---|---|
-| Desbalance | `class_weight='balanced'` — no SMOTE |
-| Nulos en content/lenght | `content_length = 0` para GETs — no NaN |
-| Encoding de Method | One-hot: `method_is_get`, `method_is_post`, `method_is_put` |
-| Indicadores de texto | Percent-encoded (`%27`, `%3C`) — no chars literales |
-| Normalización | Solo features continuas: `url_length`, `content_length` |
-| Features binarias | Sin normalizar — ya están en 0/1 |
+| Imbalance | `class_weight='balanced'` — no SMOTE |
+| Nulls in content/lenght | `content_length = 0` for GETs — no NaN |
+| Method Encoding | One-hot: `method_is_get`, `method_is_post`, `method_is_put` |
+| Text indicators | Percent-encoded (`%27`, `%3C`) — no literal chars |
+| Normalization | Continuous features only: `url_length`, `content_length` |
+| Binary features | No normalization — already 0/1 |
 
 ---
 
-### Features finales — Modelo A
+### Final features — Model A
 
-| Feature | Fuente | Tipo | Importancia |
+| Feature | Source | Type | Importance |
 |---|---|---|---|
-| `method_is_put` | `Method` | Binaria | ⭐⭐⭐ — 100% ataques |
-| `method_is_post` | `Method` | Binaria | ⭐⭐ — tasa 54% ataque |
-| `method_is_get` | `Method` | Binaria | ⭐ — referencia |
-| `url_has_pct27` | `URL` | Binaria | ⭐⭐ — corr 0.183 |
-| `url_has_dashdash` | `URL` | Binaria | ⭐⭐ — corr 0.148 |
-| `url_has_script` | `URL` | Binaria | ⭐⭐ — corr 0.137 |
-| `url_has_pct3c` | `URL` | Binaria | ⭐⭐ — corr 0.124 |
-| `url_has_select` | `URL` | Binaria | ⭐ — corr 0.050 |
-| `url_length` | `URL` | Numérica | ⭐ — útil combinada |
-| `content_length` | `content` | Numérica | ⭐⭐ — ataques POST más largos |
-| `content_has_*` | `content` | Binaria | pendiente — mismos indicadores en body |
+| `method_is_put` | `Method` | Binary | ⭐⭐⭐ — 100% attacks |
+| `method_is_post` | `Method` | Binary | ⭐⭐ — 54% attack rate |
+| `method_is_get` | `Method` | Binary | ⭐ — reference |
+| `url_has_pct27` | `URL` | Binary | ⭐⭐ — corr 0.183 |
+| `url_has_dashdash` | `URL` | Binary | ⭐⭐ — corr 0.148 |
+| `url_has_script` | `URL` | Binary | ⭐⭐ — corr 0.137 |
+| `url_has_pct3c` | `URL` | Binary | ⭐⭐ — corr 0.124 |
+| `url_has_select` | `URL` | Binary | ⭐ — corr 0.050 |
+| `url_length` | `URL` | Numerical | ⭐ — useful combined |
+| `content_length` | `content` | Numerical | ⭐⭐ — longer POST attacks |
+| `content_has_*` | `content` | Binary | pending — same indicators in body |
 
 ---
 
 ## EDA — UNSW-NB15
 
-**Modelo:** B — Network Attack Detection  
-**Archivos:** `data/raw/unsw_nb15/UNSW_NB15_training-set.parquet`, `UNSW_NB15_testing-set.parquet`  
-**Estado:** completado ✅
+**Model:** B — Network Attack Detection  
+**Files:** `data/raw/unsw_nb15/UNSW_NB15_training-set.parquet`, `UNSW_NB15_testing-set.parquet`  
+**Status:** completed ✅
 
-### Estructura del dataset
+### Dataset structure
 
-- **Shape:** Train 175.341 × 36 / Test 82.332 × 36
-- **Split:** ya viene predefinido en el parquet — no modificar
-- **36 columnas:** 33 features + `attack_cat` + `label` + 1 implícita de índice
+- **Shape:** Train 175,341 × 36 / Test 82,332 × 36
+- **Split:** predefined in the parquet — do not modify
+- **36 columns:** 33 features + `attack_cat` + `label` + 1 implicit index
 
-### Dtypes — observaciones
+### Dtypes — observations
 
-| Tipo | Columnas | Nota |
+| Type | Columns | Note |
 |---|---|---|
-| `float32` | `dur`, `rate`, `sload`, `dload`, `sinpkt`, `djit`, etc. | Optimizado — no float64 |
-| `int8 / int16 / int32` | mayoría de features enteras | Optimizado en memoria |
-| `category` | `proto`, `service`, `state`, `attack_cat` | Ya listas, sin conversión manual |
-| `int8` | `label` | Target — valores 0/1 ✅ |
+| `float32` | `dur`, `rate`, `sload`, `dload`, `sinpkt`, `djit`, etc. | Optimized — not float64 |
+| `int8 / int16 / int32` | most integer features | Memory optimized |
+| `category` | `proto`, `service`, `state`, `attack_cat` | Ready, no manual conversion |
+| `int8` | `label` | Target — 0/1 values ✅ |
 
-El parquet **ya viene con dtypes optimizados** — señal de que fue procesado con cuidado. Las categóricas tienen dtype `category` nativo de pandas.
+The parquet **already comes with optimized dtypes** — a sign of careful processing. Categoricals have native pandas `category` dtype.
 
-**`attack_cat`:** columna categórica con los 9 tipos de ataque. Solo se usa para análisis — **no va como input al modelo** (usamos label binario).
+**`attack_cat`:** categorical column with the 9 attack types. Used for analysis only — **does not go as model input** (we use binary label).
 
-### El label
+### The label
 
-- `label` es `int8` con valores `[0, 1]` ✅ — listo, sin transformación
-- `0` = Benign, `1` = Malicious — consistente con el resto del proyecto
+- `label` is `int8` with values `[0, 1]` ✅ — ready, no transformation
+- `0` = Benign, `1` = Malicious — consistent across project
 
-### Distribución de clases
+### Class distribution
 
 | Split | Benign (0) | Malicious (1) | % Malicious |
 |---|---|---|---|
-| Train | 56.000 | 119.341 | **68.1%** |
-| Test | 37.000 | 45.332 | **55.1%** |
+| Train | 56,000 | 119,341 | **68.1%** |
+| Test | 37,000 | 45,332 | **55.1%** |
 
-!!! warning "Desbalance inverso — más ataques que tráfico normal"
-    A diferencia de CSIC 2010 (59% normal), acá los ataques son mayoría en train (68%).
-    Además el ratio es **distinto entre train y test** — train tiene más ataques proporcionalmente.
-    Esto es inusual pero está documentado en el paper original de UNSW-NB15.
+!!! warning "Inverse imbalance — more attacks than normal traffic"
+    Unlike CSIC 2010 (59% normal), attacks are the majority in train (68%).
+    Also the ratio is **different between train and test** — train has proportionally more attacks.
+    This is unusual but documented in the original UNSW-NB15 paper.
 
-**Estrategia de desbalance:** a definir en el EDA — evaluar `class_weight='balanced'` vs SMOTE.
-Con 68/32 el desbalance es moderado-alto — SMOTE puede ser necesario.
+**Imbalance strategy:** to be defined in EDA — evaluate `class_weight='balanced'` vs SMOTE.
+With 68/32 the imbalance is moderate-high — SMOTE might be necessary.
 
-### Categorías de ataque (attack_cat)
+### Attack categories (attack_cat)
 
-Solo para análisis — no va como input al modelo. Usamos label binario (0/1).
+For analysis only — does not go as model input. We use binary label (0/1).
 
-| Categoría | Registros | % de ataques | Descripción |
+| Category | Records | % of attacks | Description |
 |---|---|---|---|
-| Generic | 40.000 | 33.5% | Ataques genéricos no clasificados |
-| Exploits | 33.393 | 28.0% | Explotación de vulnerabilidades conocidas |
-| Fuzzers | 18.184 | 15.2% | Input malformado para encontrar bugs |
-| DoS | 12.264 | 10.3% | Denegación de servicio |
-| Reconnaissance | 10.491 | 8.8% | Escaneo y reconocimiento de red |
-| Analysis | 2.000 | 1.7% | Análisis de tráfico / sniffing |
-| Backdoor | 1.746 | 1.5% | Acceso remoto no autorizado |
-| Shellcode | 1.133 | 0.9% | Ejecución de código malicioso |
-| Worms | 130 | 0.1% | Auto-propagación de malware |
+| Generic | 40,000 | 33.5% | Unclassified generic attacks |
+| Exploits | 33,393 | 28.0% | Exploitation of known vulnerabilities |
+| Fuzzers | 18,184 | 15.2% | Malformed input to find bugs |
+| DoS | 12,264 | 10.3% | Denial of Service |
+| Reconnaissance | 10,491 | 8.8% | Network scanning and recon |
+| Analysis | 2,000 | 1.7% | Traffic analysis / sniffing |
+| Backdoor | 1,746 | 1.5% | Unauthorized remote access |
+| Shellcode | 1,133 | 0.9% | Malicious code execution |
+| Worms | 130 | 0.1% | Self-propagating malware |
 
-!!! warning "Worms severamente sub-representado"
-    130 registros vs 40.000 de Generic — ratio 1:307. Aunque usamos label binario, el modelo va a tener muy pocos ejemplos de patrones de Worms. Si el recall en esta categoría es bajo, es esperado.
+!!! warning "Worms severely under-represented"
+    130 records vs 40,000 for Generic — 1:307 ratio. Even using a binary label, the model will have very few examples of Worm patterns. Low recall on this category is expected.
 
-**Top 3 categorías concentran el 76.7% de los ataques:** Generic + Exploits + Fuzzers.
+**Top 3 categories make up 76.7% of attacks:** Generic + Exploits + Fuzzers.
 
-### Nulos
+### Nulls
 
-!!! success "Sin nulos — las 36 columnas están completas"
-    No hay estrategia de imputación necesaria para UNSW-NB15.
+!!! success "No nulls — all 36 columns are complete"
+    No imputation strategy needed for UNSW-NB15.
 
-**Nota:** el valor `-` en la columna `service` no es un nulo técnico — es una categoría propia que significa "sin servicio identificado". Se analizará en la sección de features categóricas.
+**Note:** the `-` value in the `service` column is not a technical null — it's its own category meaning "no identified service". Analyzed in the categorical features section.
 
-### Features categóricas
+### Categorical features
 
-#### proto — 133 valores únicos
+#### proto — 133 unique values
 
-!!! warning "Alta cardinalidad — requiere reducción"
-    One-hot encoding directo generaría 133 columnas. Estrategia: mantener top-10 más frecuentes + categoría `other` para el resto.
+!!! warning "High cardinality — requires reduction"
+    Direct one-hot encoding would generate 133 columns. Strategy: keep top-10 most frequent + `other` category for the rest.
 
-| Valor | Registros | % | Descripción |
+| Value | Records | % | Description |
 |---|---|---|---|
-| tcp | 79.946 | 45.6% | Transmission Control Protocol |
-| udp | 63.283 | 36.1% | User Datagram Protocol |
-| unas | 12.084 | 6.9% | Unassigned protocol |
-| arp | 2.859 | 1.6% | Address Resolution Protocol |
-| ospf | 2.595 | 1.5% | Routing protocol |
-| otros 128 | ~14.574 | 8.3% | → agrupar en `other` |
+| tcp | 79,946 | 45.6% | Transmission Control Protocol |
+| udp | 63,283 | 36.1% | User Datagram Protocol |
+| unas | 12,084 | 6.9% | Unassigned protocol |
+| arp | 2,859 | 1.6% | Address Resolution Protocol |
+| ospf | 2,595 | 1.5% | Routing protocol |
+| other 128 | ~14,574 | 8.3% | → group into `other` |
 
-TCP + UDP + unas = **88.6% del tráfico**. El resto se agrupa.
+TCP + UDP + unas = **88.6% of traffic**. The rest is grouped.
 
-#### service — 13 valores únicos
+#### service — 13 unique values
 
-One-hot encoding directo. `-` **no es un nulo** — es la categoría "sin servicio identificado" y es la más frecuente (53.6%).
+Direct one-hot encoding. `-` **is not a null** — it's the "no identified service" category and is the most frequent (53.6%).
 
-| Valor | Registros | % |
+| Value | Records | % |
 |---|---|---|
-| `-` | 94.168 | 53.6% |
-| dns | 47.294 | 27.0% |
-| http | 18.724 | 10.7% |
-| smtp | 5.058 | 2.9% |
-| ftp-data | 3.995 | 2.3% |
-| otros 8 | ~6.102 | 3.5% |
+| `-` | 94,168 | 53.6% |
+| dns | 47,294 | 27.0% |
+| http | 18,724 | 10.7% |
+| smtp | 5,058 | 2.9% |
+| ftp-data | 3,995 | 2.3% |
+| other 8 | ~6,102 | 3.5% |
 
-#### state — 9 valores únicos
+#### state — 9 unique values
 
-One-hot encoding directo. INT + FIN + CON = 99% del tráfico.
+Direct one-hot encoding. INT + FIN + CON = 99% of traffic.
 
-| Valor | Registros | % | Descripción |
+| Value | Records | % | Description |
 |---|---|---|---|
-| INT | 82.275 | 46.9% | Intermediate — conexión en curso |
-| FIN | 77.825 | 44.4% | Connection finished normalmente |
-| CON | 13.152 | 7.5% | UDP/ICMP — conexión establecida |
-| RST | 83 | 0.05% | Reset — conexión terminada abruptamente |
-| otros 5 | 16 | ~0% | Casos extremadamente raros |
+| INT | 82,275 | 46.9% | Intermediate — connection in progress |
+| FIN | 77,825 | 44.4% | Connection finished normally |
+| CON | 13,152 | 7.5% | UDP/ICMP — established connection |
+| RST | 83 | 0.05% | Reset — connection terminated abruptly |
+| other 5 | 16 | ~0% | Extremely rare cases |
 
-#### Estrategia de encoding por columna
+#### Encoding strategy per column
 
-| Columna | Cardinalidad | Estrategia |
+| Column | Cardinality | Strategy |
 |---|---|---|
-| `proto` | 133 | Top-10 + categoría `other` → one-hot |
-| `service` | 13 | One-hot directo (13 columnas) |
-| `state` | 9 | One-hot directo (9 columnas) |
+| `proto` | 133 | Top-10 + `other` category → one-hot |
+| `service` | 13 | Direct one-hot (13 columns) |
+| `state` | 9 | Direct one-hot (9 columns) |
 
-### Estadísticas descriptivas — features numéricas
+### Descriptive statistics — numerical features
 
-#### Outliers extremos
+#### Extreme outliers
 
-Varias features tienen media >> mediana — distribuciones con cola muy pesada. StandardScaler no es adecuado para estas features.
+Several features have mean >> median — distributions with very heavy tails. StandardScaler is not suitable for these features.
 
-| Feature | Mediana | Media | Máximo | Observación |
+| Feature | Median | Mean | Maximum | Observation |
 |---|---|---|---|---|
-| `sbytes` | 430 | 8.844 | 12.965.230 | Cola extrema — bytes enviados |
-| `dbytes` | 164 | 14.928 | 14.655.550 | Cola extrema — bytes recibidos |
-| `sload` | 879.674 | 73.454.030 | 5.988.000.000 | Cola extrema — source load |
-| `dload` | 1.447 | 671.205 | 22.422.730 | Cola extrema — dest load |
-| `response_body_len` | 0 | 2.144 | 6.558.056 | P75=0, muy sparse |
-| `sjit` | 0 | 4.976 | 1.460.480 | Jitter extremo |
-| `rate` | 3.225 | 95.406 | 1.000.000 | Max=1M exacto — posible cap artificial |
+| `sbytes` | 430 | 8,844 | 12,965,230 | Extreme tail — bytes sent |
+| `dbytes` | 164 | 14,928 | 14,655,550 | Extreme tail — bytes received |
+| `sload` | 879,674 | 73,454,030 | 5,988,000,000 | Extreme tail — source load |
+| `dload` | 1,447 | 671,205 | 22,422,730 | Extreme tail — dest load |
+| `response_body_len` | 0 | 2,144 | 6,558,056 | P75=0, very sparse |
+| `sjit` | 0 | 4,976 | 1,460,480 | Extreme jitter |
+| `rate` | 3,225 | 95,406 | 1,000,000 | Max=1M exact — possible artificial cap |
 
-**Estrategia de normalización:** `RobustScaler` (usa mediana e IQR, resistente a outliers) o log-transform + StandardScaler para las features con cola más pesada.
+**Normalization strategy:** `RobustScaler` (uses median and IQR, resistant to outliers) or log-transform + StandardScaler for features with heaviest tails.
 
-#### Features sparse (median=0, P75=0)
+#### Sparse features (median=0, P75=0)
 
-Estas features están en cero para la mayoría del tráfico — solo activan en casos específicos:
+These features are zero for most traffic — they only activate in specific cases:
 
 `trans_depth`, `response_body_len`, `is_ftp_login`, `ct_ftp_cmd`, `ct_flw_http_mthd`, `tcprtt`, `synack`, `ackdat`, `sloss`, `dloss`, `sjit`, `djit`
 
-Son útiles igual — cuando activan, pueden ser muy discriminativas.
+They are still useful — when activated, they can be highly discriminative.
 
-#### Distribuciones por clase — histogramas de features de flujo
+#### Distributions by class — flow feature histograms
 
-| Feature | Patrón observado | Poder discriminativo |
+| Feature | Observed pattern | Discriminative power |
 |---|---|---|
-| `rate` | Ataques distribuidos uniformemente hasta 1M. Normal concentrado cerca de 0 | ⭐⭐⭐ Alto |
-| `sload` | Ataques con distribución más multimodal. Normal más concentrado | ⭐⭐ Medio |
-| `sbytes` | Ambas clases concentradas cerca de 0, ataques con cola más pesada | ⭐ Bajo-medio |
-| `dur` | Ambas concentradas cerca de 0. Ataques tienden a ser más cortos | ⭐ Bajo-medio |
-| `dbytes` | **Normal tiene MÁS bytes recibidos que ataques** | ⭐⭐ Medio |
-| `dload` | **Normal domina completamente** — tráfico legítimo descarga más datos | ⭐⭐ Medio |
+| `rate` | Attacks uniformly distributed up to 1M. Normal concentrated near 0 | ⭐⭐⭐ High |
+| `sload` | Attacks with more multimodal distribution. Normal more concentrated | ⭐⭐ Medium |
+| `sbytes` | Both classes concentrated near 0, attacks have heavier tail | ⭐ Low-medium |
+| `dur` | Both concentrated near 0. Attacks tend to be shorter | ⭐ Low-medium |
+| `dbytes` | **Normal has MORE received bytes than attacks** | ⭐⭐ Medium |
+| `dload` | **Normal completely dominates** — legit traffic downloads more data | ⭐⭐ Medium |
 
-!!! info "Patrón inverso en dbytes y dload"
-    El tráfico normal tiene más bytes recibidos que los ataques. Tiene sentido: el tráfico legítimo descarga datos (HTTP responses, DNS replies). Muchos ataques son scans o probes que no reciben respuesta — envían paquetes pero no reciben nada back.
+!!! info "Inverse pattern in dbytes and dload"
+    Normal traffic has more received bytes than attacks. This makes sense: legitimate traffic downloads data (HTTP responses, DNS replies). Many attacks are scans or probes that don't receive a response — they send packets but get nothing back.
 
-**Estrategia de normalización confirmada:** `RobustScaler` para todas las features de flujo — distribuciones extremadamente skewed, StandardScaler quedaría inutilizado por los outliers.
+**Normalization strategy confirmed:** `RobustScaler` for all flow features — extremely skewed distributions, StandardScaler would be rendered useless by outliers.
 
-#### Anomalías a investigar
+#### Anomalies to investigate
 
-| Feature | Problema | Decisión |
+| Feature | Issue | Decision |
 |---|---|---|
-| `is_ftp_login` | Max=4 — debería ser binaria 0/1 | Investigar — posible error o conteo |
-| `stcpb` / `dtcpb` | Números de secuencia TCP hasta 4.29B — aleatorios por diseño | Candidatas a descartar |
-| `rate` | Max=1.000.000 exacto | Posible cap artificial — verificar |
-| `swin` / `dwin` | Bounded 0-255 (TCP window size) | MinMaxScaler o sin normalizar |
+| `is_ftp_login` | Max=4 — should be binary 0/1 | Investigate — possible error or count |
+| `stcpb` / `dtcpb` | TCP sequence numbers up to 4.29B — random by design | Candidates to discard |
+| `rate` | Max=1,000,000 exact | Possible artificial cap — verify |
+| `swin` / `dwin` | Bounded 0-255 (TCP window size) | MinMaxScaler or no normalization |
 
-### Correlación de features con label
+### Feature correlation with label
 
-#### Top features — correlación positiva (más valor → más probable ataque)
+#### Top features — positive correlation (higher value → more likely attack)
 
-| Feature | Correlación | Interpretación |
+| Feature | Correlation | Interpretation |
 |---|---|---|
-| `ct_dst_sport_ltm` | **0.357** | Conteo de conexiones recientes al mismo destino/puerto — ataques generan muchas conexiones |
-| `rate` | **0.338** | Tasa de paquetes por segundo — ataques tienen rate más alto y uniforme |
-| `ct_src_dport_ltm` | **0.306** | Conteo de conexiones recientes del mismo source — scanning pattern |
-| `sload` | 0.183 | Carga de la fuente — ataques envían más datos |
-| `ackdat` | 0.097 | Tiempo entre SYN-ACK y ACK — patrón TCP anómalo |
-| `tcprtt` | 0.082 | Round-trip time TCP |
-| `synack` | 0.058 | Tiempo de SYN-ACK |
+| `ct_dst_sport_ltm` | **0.357** | Count of recent connections to same dest/port — attacks generate many connections |
+| `rate` | **0.338** | Packets per second rate — attacks have higher/uniform rate |
+| `ct_src_dport_ltm` | **0.306** | Count of recent connections from same source — scanning pattern |
+| `sload` | 0.183 | Source load — attacks send more data |
+| `ackdat` | 0.097 | Time between SYN-ACK and ACK — anomalous TCP pattern |
+| `tcprtt` | 0.082 | TCP round-trip time |
+| `synack` | 0.058 | SYN-ACK time |
 
-#### Top features — correlación negativa (más valor → más probable tráfico normal)
+#### Top features — negative correlation (higher value → more likely normal traffic)
 
-| Feature | Correlación | Interpretación |
+| Feature | Correlation | Interpretation |
 |---|---|---|
-| `dload` | **-0.394** | Tráfico normal descarga más datos — ataques son probes sin respuesta |
-| `dmean` | **-0.342** | Tamaño medio de paquetes recibidos — mayor en tráfico legítimo |
-| `swin` | **-0.334** | TCP window size source — mayor en conexiones legítimas establecidas |
-| `dwin` | **-0.320** | TCP window size dest — mayor en conexiones legítimas |
-| `stcpb` | -0.255 | Número de secuencia TCP — correlación inesperada, **no descartar todavía** |
+| `dload` | **-0.394** | Normal traffic downloads more data — attacks are probes with no response |
+| `dmean` | **-0.342** | Mean received packet size — higher in legitimate traffic |
+| `swin` | **-0.334** | TCP window size source — higher in established legitimate connections |
+| `dwin` | **-0.320** | TCP window size dest — higher in legitimate connections |
+| `stcpb` | -0.255 | TCP sequence number — unexpected correlation, **do not discard yet** |
 
-#### Features con correlación ~0 → candidatas a descartar
+#### Features with correlation ~0 → candidates to discard
 
 `sloss` (-0.001), `sjit` (-0.007), `smean` (-0.011), `ct_ftp_cmd` (-0.011)
 
-> **Importante:** correlación lineal baja no significa que la feature sea inútil para modelos no-lineales como Random Forest. Confirmar importancia después del training.
+> **Important:** low linear correlation does not mean the feature is useless for non-linear models like Random Forest. Confirm importance post-training.
 
-#### Decisión sobre stcpb / dtcpb
+#### Decision on stcpb / dtcpb
 
-`stcpb` muestra correlación -0.255 — inesperado para un número de secuencia TCP que debería ser aleatorio. Puede haber un patrón en cómo el dataset fue generado. **Mantener en el modelo inicial** y evaluar feature importance post-training.
+`stcpb` shows -0.255 correlation — unexpected for a TCP sequence number that should be random. There may be a pattern in how the dataset was generated. **Keep in the initial model** and evaluate feature importance post-training.
 
-### Correlación entre features (heatmap de redundancias)
+### Correlation among features (redundancy heatmap)
 
-Análisis de correlación entre las top 15 features por correlación con el label. Objetivo: identificar pares redundantes para simplificar el modelo.
+Correlation analysis among the top 15 features by label correlation. Goal: identify redundant pairs to simplify the model.
 
-#### Pares altamente correlacionados (> 0.9) — candidatos a eliminación
+#### Highly correlated pairs (> 0.9) — candidates for elimination
 
-| Par | Correlación | Decisión |
+| Pair | Correlation | Decision |
 |---|---|---|
-| `swin` / `dwin` | **0.99** | Descartar `dwin` — casi idénticas (TCP window size source/dest) |
-| `dpkts` / `dloss` | **0.98** | Descartar `dloss` — derivada de `dpkts` |
-| `is_sm_ips_ports` / `sinpkt` | **0.94** | Descartar `is_sm_ips_ports` — `sinpkt` tiene mayor correlación con label |
-| `ct_dst_sport_ltm` / `ct_src_dport_ltm` | **0.91** | Mantener ambas — aunque correlacionadas, capturan perspectivas distintas (destino vs source) |
+| `swin` / `dwin` | **0.99** | Discard `dwin` — almost identical (TCP window size source/dest) |
+| `dpkts` / `dloss` | **0.98** | Discard `dloss` — derived from `dpkts` |
+| `is_sm_ips_ports` / `sinpkt` | **0.94** | Discard `is_sm_ips_ports` — `sinpkt` has higher label correlation |
+| `ct_dst_sport_ltm` / `ct_src_dport_ltm` | **0.91** | Keep both — though correlated, they capture different perspectives (dest vs source) |
 
-#### Pares moderadamente correlacionados (0.6–0.9) — mantener ambas
+#### Moderately correlated pairs (0.6–0.9) — keep both
 
-| Par | Correlación | Nota |
+| Pair | Correlation | Note |
 |---|---|---|
-| `stcpb` / `dtcpb` | **0.65** | Mantener — correlación moderada, perspectivas distintas |
-| `rate` / `ct_dst_sport_ltm` | ~0.5 | Mantener — rate es tasa de paquetes, ct_ es conteo de conexiones |
+| `stcpb` / `dtcpb` | **0.65** | Keep — moderate correlation, different perspectives |
+| `rate` / `ct_dst_sport_ltm` | ~0.5 | Keep — rate is packet rate, ct_ is connection count |
 
-!!! info "Por qué eliminar features correlacionadas"
-    Dos features con correlación 0.99 aportan casi la misma información al modelo. Mantenerlas no mejora la predicción pero aumenta el ruido y la dimensionalidad. En Random Forest esto tiene poco impacto práctico, pero es buena práctica reducir redundancias antes de entrenar.
+!!! info "Why eliminate correlated features"
+    Two features with 0.99 correlation provide almost the same information to the model. Keeping them does not improve prediction but adds noise and dimensionality. In Random Forest this has little practical impact, but it's good practice to reduce redundancies before training.
 
-#### Features descartadas por redundancia
+#### Features discarded due to redundancy
 
-| Feature | Razón | Reemplazada por |
+| Feature | Reason | Replaced by |
 |---|---|---|
-| `dwin` | 0.99 de correlación con `swin` | `swin` |
-| `dloss` | 0.98 de correlación con `dpkts` | `dpkts` |
-| `is_sm_ips_ports` | 0.94 con `sinpkt`, menor correlación con label | `sinpkt` |
+| `dwin` | 0.99 correlation with `swin` | `swin` |
+| `dloss` | 0.98 correlation with `dpkts` | `dpkts` |
+| `is_sm_ips_ports` | 0.94 with `sinpkt`, lower label correlation | `sinpkt` |
 
-### Features constantes o de baja varianza
+### Constant or low variance features
 
-Features numéricas con pocos valores únicos (< 10) — candidatas a descartar o tratar especialmente:
+Numerical features with few unique values (< 10) — candidates to discard or treat specially:
 
-| Feature | Valores únicos | Tipo real | Decisión |
+| Feature | Unique values | Real type | Decision |
 |---|---|---|---|
-| `is_sm_ips_ports` | 2 | Binaria | **Descartar** — ya identificada como redundante con `sinpkt` (correlación 0.94) |
-| `dwin` | 7 | Casi binaria | **Descartar** — ya identificada como redundante con `swin` (correlación 0.99) |
-| `is_ftp_login` | 4 | Debería ser binaria | **Mantener con precaución** — max=4 es una anomalía (debería ser 0/1). Puede ser conteo en lugar de flag binario. Validar con feature importance post-training |
-| `ct_ftp_cmd` | 4 | Conteo | **Mantener** — sparse pero potencialmente discriminativa para conexiones FTP. Correlación ~0 en el dataset global no implica que sea inútil en Random Forest |
+| `is_sm_ips_ports` | 2 | Binary | **Discard** — already identified as redundant with `sinpkt` (correlation 0.94) |
+| `dwin` | 7 | Almost binary | **Discard** — already identified as redundant with `swin` (correlation 0.99) |
+| `is_ftp_login` | 4 | Should be binary | **Keep with caution** — max=4 is an anomaly (should be 0/1). It might be a count instead of a binary flag. Validate with post-training feature importance |
+| `ct_ftp_cmd` | 4 | Count | **Keep** — sparse but potentially discriminative for FTP connections. ~0 correlation globally doesn't mean it's useless in Random Forest |
 
-!!! info "Baja varianza ≠ inútil"
-    Una feature binaria o con pocos valores únicos puede ser muy discriminativa si los pocos valores se distribuyen de forma diferente entre clases. `is_sm_ips_ports` y `dwin` se descartan por **redundancia**, no solo por baja varianza.
+!!! info "Low variance ≠ useless"
+    A binary feature or one with few unique values can be highly discriminative if those values are distributed differently between classes. `is_sm_ips_ports` and `dwin` are discarded due to **redundancy**, not just low variance.
 
-### Decisiones finales — UNSW-NB15
+### Final decisions — UNSW-NB15
 
-| Decisión | Detalle |
+| Decision | Detail |
 |---|---|
-| **Normalización** | `RobustScaler` para todas las features numéricas continuas |
-| **Encoding** | Top-10+other para `proto`, one-hot directo para `service` y `state` |
-| **Desbalance** | Evaluar `class_weight='balanced'` primero — desbalance 68/32 |
-| **Nulos** | Sin imputación necesaria — dataset completo |
-| **Features descartadas** | `dwin`, `dloss`, `is_sm_ips_ports` (redundantes) |
-| **Features a monitorear** | `stcpb`, `dtcpb` — correlación inesperada, validar con feature importance |
-| **attack_cat** | Solo para análisis — no va como input al modelo |
+| **Normalization** | `RobustScaler` for all continuous numerical features |
+| **Encoding** | Top-10+other for `proto`, direct one-hot for `service` and `state` |
+| **Imbalance** | Evaluate `class_weight='balanced'` first — 68/32 imbalance |
+| **Nulls** | No imputation necessary — complete dataset |
+| **Discarded features** | `dwin`, `dloss`, `is_sm_ips_ports` (redundant) |
+| **Features to monitor** | `stcpb`, `dtcpb` — unexpected correlation, validate with feature importance |
+| **attack_cat** | For analysis only — does not go as model input |
 
-### Plan de análisis
+### Analysis plan
 
-| Análisis | Herramienta | Output esperado |
+| Analysis | Tool | Expected Output |
 |---|---|---|
-| Distribución de `attack_cat` | `value_counts()` + barplot | Entender los 9 tipos de ataque |
-| Distribución de clases | `label.value_counts()` | Confirmar desbalance 68/32 |
-| Correlación entre features numéricas | heatmap | Features redundantes a eliminar |
-| Outliers en features de flujo | boxplot + IQR | Estrategia de normalización |
-| Valores únicos en categóricas | `nunique()` | Estrategia de encoding |
-| Nulos / valores `-` en `service` | `isnull()` + `value_counts()` | Imputación o categoría propia |
+| `attack_cat` distribution | `value_counts()` + barplot | Understand the 9 attack types |
+| Class distribution | `label.value_counts()` | Confirm 68/32 imbalance |
+| Correlation among numerical features | heatmap | Redundant features to eliminate |
+| Outliers in flow features | boxplot + IQR | Normalization strategy |
+| Unique values in categoricals | `nunique()` | Encoding strategy |
+| Nulls / `-` values in `service` | `isnull()` + `value_counts()` | Imputation or own category |
 
 ---
 
-## Checklist de completion
+## Completion checklist
 
-- [x] Label confirmado en 0/1 — CSIC 2010 ✅
-- [x] Features CSIC 2010 definidas ✅
-- [x] Estrategia de nulos CSIC 2010 ✅
-- [x] Estrategia de normalización CSIC 2010 ✅
-- [x] Estrategia de desbalance CSIC 2010 — `class_weight='balanced'` ✅
-- [x] Label confirmado en 0/1 — UNSW-NB15 ✅
-- [x] Features UNSW-NB15 analizadas — correlación con label + redundancias ✅
-- [x] Estrategia de nulos UNSW-NB15 — sin nulos, no requiere imputación ✅
-- [x] Estrategia de normalización UNSW-NB15 — RobustScaler ✅
-- [x] Estrategia de desbalance UNSW-NB15 — evaluar class_weight='balanced' ✅
-- [x] Features redundantes identificadas — dwin, dloss, is_sm_ips_ports descartadas ✅
-- [x] `docs/models.md` actualizado con todas las decisiones UNSW-NB15 ✅
+- [x] Label confirmed as 0/1 — CSIC 2010 ✅
+- [x] CSIC 2010 features defined ✅
+- [x] CSIC 2010 nulls strategy ✅
+- [x] CSIC 2010 normalization strategy ✅
+- [x] CSIC 2010 imbalance strategy — `class_weight='balanced'` ✅
+- [x] Label confirmed as 0/1 — UNSW-NB15 ✅
+- [x] UNSW-NB15 features analyzed — label correlation + redundancies ✅
+- [x] UNSW-NB15 nulls strategy — no nulls, no imputation needed ✅
+- [x] UNSW-NB15 normalization strategy — RobustScaler ✅
+- [x] UNSW-NB15 imbalance strategy — evaluate class_weight='balanced' ✅
+- [x] Redundant features identified — dwin, dloss, is_sm_ips_ports discarded ✅
+- [x] `docs/models.md` updated with all UNSW-NB15 decisions ✅

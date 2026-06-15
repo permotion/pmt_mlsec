@@ -1,541 +1,713 @@
-# Glosario
+# Glossary
 
-Definiciones y terminología usada en el proyecto. Ordenado alfabéticamente.
+Definitions and terminology used in the project. Ordered alphabetically.
 
 ---
 
 ## A
 
-**Align (pandas — alineación de columnas)**
-Operación que sincroniza las columnas de dos DataFrames para que tengan exactamente las mismas columnas en el mismo orden. Necesario después de one-hot encoding en train y test por separado: el test puede tener categorías que no aparecieron en train (o viceversa), generando columnas distintas. `train.align(test, join='left', fill_value=0)` fuerza al test a tener exactamente las columnas del train, rellenando con 0 las que no tenía. Esto es crítico para que el modelo reciba el mismo número de features en entrenamiento e inferencia.
+**Align (pandas — column alignment)**
+Operation that synchronizes the columns of two DataFrames so they have exactly the same columns in the same order. Necessary after one-hot encoding on train and test separately: the test may have categories that did not appear in train (or vice versa), generating different columns. `train.align(test, join='left', fill_value=0)` forces the test to have exactly the train's columns, filling with 0 the ones it didn't have. This is critical for the model to receive the same number of features in training and inference.
+
+**Ablation (ablation study)**
+Diagnostic technique where one or more features (or model components) are removed and the impact on metrics is measured. The goal is to determine if each feature is necessary or if it can be eliminated without degrading performance.
+
+**How it works:**
+1. A baseline is defined with all features active
+2. Train and evaluate without a specific feature
+3. Measure ΔRecall and ΔPrecision with respect to the baseline
+4. Criterion: if ΔRecall ≥ -0.5% and ΔPrecision ≥ -1.0% → the feature is eliminable
+
+**Example in this project:** when removing `content_length`, `content_param_count`, and `method_is_post` together (all redundant with `content_param_density`), ΔRecall = +0.0011 but ΔPrecision = -0.0016 → within threshold, eliminable. But when removing 8 features together (low signal + redundant), ΔPrecision = -0.0298 → outside threshold, the 8 together provide diversity that isn't noticed individually.
+
+**Ablation result in Model A (2026-04-20):**
+
+| Experiment | ΔRecall | ΔPrecision | Verdict |
+|---|---|---|---|
+| Without each feature individually | -0.003 to +0.0013 | -0.0137 to +0.0001 | All eliminable individually |
+| Without low signal group (3) | -0.0003 | -0.0000 | ✅ Eliminable |
+| Without redundant content group (3) | +0.0011 | -0.0016 | ✅ Eliminable |
+| Without 8 features together | -0.0008 | **-0.0298** | ⚠️ No — the combination contributes |
+
+**Conclusion:** the features are collectively more valuable than individually. Eliminating more than 3-4 together starts degrading Precision. The model benefits from the explicit redundancy of these features to cover edge cases.
+
+See also: *Feature*, *Feature redundancy*, *Mutual Information*.
 
 **Attack (label 1)**
-Clase positiva en ambos modelos. Representa cualquier request o flujo de red identificado como malicioso. Ver también: *Malicious*, *label*.
+Positive class in both models. Represents any request or network flow identified as malicious. See also: *Malicious*, *label*.
 
 ---
 
 ## B
 
 **Backend store (MLflow)**
-Componente de almacenamiento donde MLflow persiste los metadatos de cada run: parámetros, métricas, tags, y ruta a los artefactos. En este proyecto usamos SQLite (`mlflow.db`) en la raíz del proyecto. El backend store se configura con el tracking URI al iniciar el servidor: `mlflow ui --backend-store-uri "sqlite:///mlflow.db"`. El file-based store (`mlruns/`) está deprecado en MLflow 3.x — no usar.
+Storage component where MLflow persists the metadata of each run: parameters, metrics, tags, and artifact path. In this project we use SQLite (`mlflow.db`) at the root of the project. The backend store is configured with the tracking URI when starting the server: `mlflow ui --backend-store-uri "sqlite:///mlflow.db"`. The file-based store (`mlruns/`) is deprecated in MLflow 3.x — do not use.
 
-**Baseline (modelo baseline)**
-El modelo más simple que se entrena primero, antes de probar alternativas más complejas. Sirve como punto de referencia: si un modelo más complejo no supera al baseline, no vale la pena usarlo. En este proyecto: Logistic Regression es el baseline de Modelo A, Random Forest es el baseline de Modelo B.
+**Baseline (baseline model)**
+The simplest model that is trained first, before trying more complex alternatives. It serves as a reference point: if a more complex model does not beat the baseline, it is not worth using. In this project: Logistic Regression is the Model A baseline, Random Forest is the Model B baseline.
 
 **Benign (label 0)**
-Clase negativa. Tráfico legítimo, sin indicadores de ataque. Sinónimo de *Normal* en el contexto del Modelo A.
+Negative class. Legitimate traffic, without attack indicators. Synonym for *Normal* in the context of Model A.
 
 **Binary classification**
-Tipo de problema ML donde el output es una de dos clases. En este proyecto: 0 (benign) o 1 (malicious).
+Type of ML problem where the output is one of two classes. In this project: 0 (benign) or 1 (malicious).
 
 ---
 
 ## C
 
-**Correlation (correlación)**
-Medida estadística que indica cuánto varía una feature junto con el label. Valor entre -1 y 1. `+1` significa que cuando la feature sube, el label sube (más ataque). `-1` significa que cuando la feature sube, el label baja (más normal). `0` significa que no hay relación lineal. **Importante:** correlación baja con el label no significa que la feature sea inútil — modelos no-lineales como Random Forest pueden encontrar patrones que la correlación lineal no detecta.
+**Correlation**
+Statistical measure that indicates how much a feature varies along with the label. Value between -1 and 1. `+1` means that when the feature goes up, the label goes up (more attack). `-1` means that when the feature goes up, the label goes down (more normal). `0` means there is no linear relationship. **Important:** low correlation with the label does not mean the feature is useless — non-linear models like Random Forest can find patterns that linear correlation does not detect.
 
-**Cardinality (cardinalidad)**
-Número de valores únicos de una columna categórica. Alta cardinalidad (ej: `proto` con 133 valores) es un problema para one-hot encoding porque genera demasiadas columnas. Estrategias para manejarla: top-N encoding (mantener los N más frecuentes + `other`), frequency encoding (reemplazar cada categoría por su frecuencia), o embeddings. En este proyecto usamos top-N para `proto`.
+**Cardinality**
+Number of unique values of a categorical column. High cardinality (e.g. `proto` with 133 values) is a problem for one-hot encoding because it generates too many columns. Strategies to handle it: top-N encoding (keep the N most frequent + `other`), frequency encoding (replace each category by its frequency), or embeddings. In this project we use top-N for `proto`.
 
 **Categorical dtype (pandas)**
-Tipo de dato de pandas optimizado para columnas con pocos valores únicos repetidos (ej: `proto`, `service`, `state`). Internamente almacena los valores como enteros con un diccionario de mapeo, reduciendo el uso de memoria significativamente comparado con `object`. En UNSW-NB15 las categóricas ya vienen con este dtype en el parquet.
+pandas data type optimized for columns with few unique repeated values (e.g. `proto`, `service`, `state`). Internally stores values as integers with a mapping dictionary, significantly reducing memory usage compared to `object`. In UNSW-NB15 the categoricals already come with this dtype in the parquet.
 
 **CSIC 2010**
-Dataset de requests HTTP generado por el Spanish National Research Council (CSIC). Contiene tráfico normal y ataques web (SQLi, XSS, CSRF, etc.). Usado para entrenar el Modelo A.
+HTTP request dataset generated by the Spanish National Research Council (CSIC). Contains normal traffic and web attacks (SQLi, XSS, CSRF, etc.). Used to train Model A.
 
 **Class imbalance**
-Cuando una clase tiene muchos más ejemplos que la otra. En datasets de seguridad, los ataques suelen ser minoría. Afecta métricas y requiere estrategias como `class_weight='balanced'` o SMOTE.
+When one class has many more examples than the other. In security datasets, attacks are usually the minority. It affects metrics and requires strategies like `class_weight='balanced'` or SMOTE.
 
 **Confusion matrix**
-Tabla de 2×2 que muestra cuántos registros cayeron en cada combinación de predicción real vs predicción del modelo. Es el punto de partida para calcular todas las métricas de clasificación.
+2x2 table showing how many records fell into each combination of real vs model prediction. It is the starting point to calculate all classification metrics.
 
 ```
-                  Predicho: Normal   Predicho: Ataque
+                  Predicted: Normal   Predicted: Attack
 Real: Normal  →        TN                  FP
-Real: Ataque  →        FN                  TP
+Real: Attack  →        FN                  TP
 ```
 
-- **TP** — ataque real, detectado como ataque ✅
-- **TN** — tráfico normal, clasificado como normal ✅
-- **FP** — tráfico normal, clasificado como ataque ❌ (falsa alarma)
-- **FN** — ataque real, clasificado como normal ❌ (ataque no detectado — el error más costoso)
+- **TP** — real attack, detected as attack ✅
+- **TN** — normal traffic, classified as normal ✅
+- **FP** — normal traffic, classified as attack ❌ (false alarm)
+- **FN** — real attack, classified as normal ❌ (undetected attack — the most costly error)
 
-Ejemplo real — Random Forest baseline en CSIC 2010 (test set):
+Real example — Random Forest baseline on CSIC 2010 (test set):
 
 ```
-                  Predicho: Normal   Predicho: Ataque
-Real: Normal  →       3.514              1.886
-Real: Ataque  →         185              3.575
+                  Predicted: Normal   Predicted: Attack
+Real: Normal  →       3,514              1,886
+Real: Attack  →         185              3,575
 ```
 
-De esta matriz se derivan todas las métricas: `Recall = 3575 / (3575 + 185) = 0.951`, `Precision = 3575 / (3575 + 1886) = 0.655`. Ver también: *Recall*, *Precision*, *False Positive*, *False Negative*.
+From this matrix all metrics are derived: `Recall = 3575 / (3575 + 185) = 0.951`, `Precision = 3575 / (3575 + 1886) = 0.655`. See also: *Recall*, *Precision*, *False Positive*, *False Negative*.
 
 ---
 
 ## D
 
-**Data leakage (fuga de datos)**
-Situación donde información del conjunto de test "se filtra" hacia el entrenamiento, produciendo métricas irrealmente optimistas que no se sostendrán en producción. El error más común: ajustar un scaler o encoder con todo el dataset (train + test) antes de dividir. La regla de oro: todo `fit` o `fit_transform` se hace **solo sobre el training set**. Luego se aplica `transform` al test. En `preprocess_unsw.py`: el `RobustScaler` se ajusta solo con `train` y se aplica con `transform` al `test`.
+**Data leakage**
+Situation where information from the test set "leaks" into the training, producing unrealistically optimistic metrics that will not hold up in production. The most common mistake: fitting a scaler or encoder with the entire dataset (train + test) before splitting. The golden rule: all `fit` or `fit_transform` is done **only on the training set**. Then `transform` is applied to the test. In `preprocess_unsw.py`: the `RobustScaler` is fitted only with `train` and applied with `transform` to the `test`.
+
+**Distribution shift**
+Situation where the data distribution in production is different from the distribution the model was trained with. It is one of the biggest risks in production ML models.
+
+**Example in Model A:** the CSIC 2010 dataset has 41% attacks and 59% normal. But in real production, attacks are usually ~1% of the traffic. This extreme imbalance radically changes how the model's probability is interpreted.
+
+**Why it matters:** a threshold calibrated with 41% attack data is not directly applicable to 1% data. With 41%, a probability of 0.30 is relatively low (the model hesitates between normal and attack). With 1%, that same probability likely means "it's normal but the model is confused by the features" — not "it's an attack".
+
+**How it manifests in metrics:**
+
+| Dataset | FP rate | Precision | Recall |
+|---|---|---|---|
+| 41% attacks (dataset) | 17.35% | 79.29% | 95.43% |
+| 99:1 (~1% attacks) | 17.41% | 5.48% | 100.00% |
+
+The same prediction with the same threshold produces radically different results in Precision and FP rate. Recall remains high, but prediction quality drops dramatically.
+
+**How it is mitigated:**
+1. Calibrate the threshold for the real distribution (G5)
+2. Use threshold-independent metrics like ROC-AUC
+3. In production, monitor the probability distribution and re-calibrate if it changes
+
+See also: *Test set 99:1*, *Decision threshold*, *scale_pos_weight*.
 
 **DoS (Denial of Service)**
-Ataque que busca agotar los recursos de un sistema (CPU, memoria, ancho de banda) para dejarlo inaccesible a usuarios legítimos. En UNSW-NB15 representa el 10.3% de los ataques. Se detecta por features de volumen: alto `sbytes`, `dbytes`, `rate`, `spkts`.
+Attack that seeks to exhaust system resources (CPU, memory, bandwidth) to make it inaccessible to legitimate users. In UNSW-NB15 it represents 10.3% of attacks. Detected by volume features: high `sbytes`, `dbytes`, `rate`, `spkts`.
 
 **dtype (data type)**
-Tipo de dato de cada columna en un DataFrame de pandas. Determina cómo se almacena en memoria y qué operaciones se pueden hacer. Los más comunes en este proyecto: `int8/16/32/64` (enteros), `float32/64` (decimales), `object` (texto), `category` (categórico optimizado), `bool`. Elegir el dtype correcto impacta directamente en el uso de memoria — `float32` usa la mitad de memoria que `float64`.
+Data type of each column in a pandas DataFrame. Determines how it is stored in memory and what operations can be done. Most common in this project: `int8/16/32/64` (integers), `float32/64` (decimals), `object` (text), `category` (optimized categorical), `bool`. Choosing the right dtype directly impacts memory usage — `float32` uses half the memory of `float64`.
 
 **DAG (Directed Acyclic Graph)**
-Estructura de Airflow que define las tareas de un pipeline y sus dependencias. En este proyecto: `ingest → preprocess → train → evaluate → register`.
+Airflow structure that defines pipeline tasks and their dependencies. In this project: `ingest → preprocess → train → evaluate → register`.
 
 **Decision threshold**
-Valor entre 0 y 1 que convierte la probabilidad que predice el modelo en una clasificación binaria (0 o 1). Si la probabilidad de un request es mayor o igual al threshold → se clasifica como ataque.
+Value between 0 and 1 that converts the probability predicted by the model into a binary classification (0 or 1). If a request's probability is greater than or equal to the threshold → classified as an attack.
 
-El threshold por defecto en scikit-learn es 0.5, pero ese valor asume que los errores FP y FN tienen el mismo costo. En seguridad no es así — un FN (ataque no detectado) es más costoso que un FP (falsa alarma). El threshold se optimiza buscando el valor que cumple Recall ≥ 0.95 con la mayor Precision posible, evaluado sobre el **val set**.
+The default threshold in scikit-learn is 0.5, but that value assumes FP and FN errors have the same cost. In security, this is not the case — an FN (undetected attack) is more costly than an FP (false alarm). The threshold is optimized looking for the value that meets Recall ≥ 0.95 with the highest possible Precision, evaluated on the **val set**.
 
-Resultado en el baseline de CSIC 2010:
+**Model A Thresholds:**
 
-| Modelo | Threshold óptimo | Efecto si se usara 0.5 |
+| Threshold | Value | Usage |
 |---|---|---|
-| Random Forest | **0.15** | Recall caería — demasiado conservador |
-| Logistic Regression | ~0.30 | Aún así clasifica todo como ataque — ROC-AUC 0.76 no tiene capacidad real |
+| Dataset (41%) | **0.3002** | Current threshold in production — calibrated on val with CSIC 2010 dataset |
+| Production (99:1) | **0.4723** | Documented — for when it is re-trained with real distribution |
 
-Un threshold muy bajo (0.15) indica que el modelo no está muy seguro de sus predicciones — clasifica como ataque apenas ve una probabilidad de 15%. Esto es consecuencia del desbalance de clases y del criterio de Recall prioritario. Ver también: *Precision vs Recall — trade-off*, *Confusion matrix*.
+**Gap analysis (G5 — 2026-04-20):**
+
+| Condition | Threshold | Recall | Precision | FP rate |
+|---|---|---|---|---|
+| Dataset (41%) | 0.3002 | 95.43% ✅ | 79.29% | 17.35% |
+| 99:1 (~1%) | 0.3002 | 100.00% | 5.48% | 17.41% |
+| 99:1 (~1%) | 0.4723 | 96.30% ✅ | 7.51% | 12.66% |
+
+**Conclusion:** the 0.3002 threshold is robust for the training dataset (41% attacks). For production with a 99:1 distribution, the model maintains high Recall but Precision drops drastically (79% → 5.5%). The corrected threshold (0.4723) reduces FP rate from 17.4% to 12.7%, but the decision is not to apply it yet — the cost in Recall (from 100% to 96%) does not justify the marginal benefit in FP.
+
+**Criterion to reconsider:** if FP rate in production exceeds 20%, recalibrate to 0.4723.
+
+See also: *Precision vs Recall — trade-off*, *Confusion matrix*, *Test set 99:1*, *Distribution shift*, *scale_pos_weight*.
 
 ---
 
 ## E
 
-**Estado ✅ / ❌ (criterio MVP)**
-Iconos usados en las tablas de resultados para indicar si un modelo cumple o no cada criterio del MVP, de forma **independiente por métrica**:
+**Status ✅ / ❌ (MVP criterion)**
+Icons used in the results tables to indicate whether or not a model meets each MVP criterion, **independently per metric**:
 
-- **✅** — la métrica cumple o supera el mínimo definido
-- **❌** — la métrica no cumple el mínimo
+- **✅** — the metric meets or exceeds the defined minimum
+- **❌** — the metric does not meet the minimum
 
-Se usan de forma independiente porque Recall y Precision son criterios **separados con distinto peso**: Recall ≥ 0.95 es prioritario (si falla, el modelo no detecta ataques), Precision ≥ 0.85 es el objetivo secundario (si falla, genera demasiadas falsas alarmas). Un modelo puede cumplir uno y no el otro.
+They are used independently because Recall and Precision are **separate criteria with different weights**: Recall ≥ 0.95 is priority (if it fails, the model does not detect attacks), Precision ≥ 0.85 is the secondary goal (if it fails, it generates too many false alarms). A model can meet one and not the other.
 
-Ejemplo — Random Forest baseline: `Recall ✅ Precision ❌` significa: detecta correctamente el 95.1% de los ataques (Recall cumplido), pero de las 5.461 alarmas que dispara, 1.886 son falsas (Precision 0.655 — muy por debajo de 0.85). El modelo es seguro en el sentido de no dejar pasar ataques, pero genera demasiado ruido para ser operable en producción.
+Example — Random Forest baseline: `Recall ✅ Precision ❌` means: correctly detects 95.1% of attacks (Recall met), but out of the 5,461 alarms it fires, 1,886 are false (Precision 0.655 — well below 0.85). The model is safe in the sense of not letting attacks pass, but it generates too much noise to be operable in production.
 
-Un run donde ambas métricas muestran ✅ cumple todos los criterios MVP y puede pasar al model registry. En este proyecto, ningún modelo ha alcanzado ese estado todavía. Ver también: *Recall*, *Precision*, *Decision threshold*.
+A run where both metrics show ✅ meets all MVP criteria and can move to the model registry. In this project, no model has reached that state yet. See also: *Recall*, *Precision*, *Decision threshold*.
 
-**Experiment (experimento ML)**
-Iteración sobre un modelo o sus features a partir de un resultado insatisfactorio. Se parte de una hipótesis ("si agrego esta feature, la Precision debería mejorar"), se implementa el cambio, y se miden las métricas para confirmar o refutar la hipótesis. Se diferencia del EDA en que el EDA explora los datos sin un modelo previo, mientras que el experimento itera sobre un modelo ya entrenado con resultados conocidos. En este proyecto los experimentos viven en `notebooks/experiments/` y se registran en `docs/experiments.md`.
+**Experiment (ML experiment)**
+Iteration over a model or its features from an unsatisfactory result. It starts from a hypothesis ("if I add this feature, Precision should improve"), the change is implemented, and the metrics are measured to confirm or refute the hypothesis. It differs from EDA in that EDA explores the data without a prior model, while the experiment iterates over an already trained model with known results. In this project, experiments live in `notebooks/experiments/` and are logged in `docs/experiments.md`.
 
 **Exploit**
-Técnica de ataque que aprovecha una vulnerabilidad conocida en software o hardware. En UNSW-NB15 representa el 28% de los ataques — la segunda categoría más frecuente. A diferencia del fuzzing (que busca vulnerabilidades desconocidas), un exploit tiene un objetivo específico y un CVE conocido.
+Attack technique that takes advantage of a known vulnerability in software or hardware. In UNSW-NB15 it represents 28% of attacks — the second most frequent category. Unlike fuzzing (which looks for unknown vulnerabilities), an exploit has a specific target and a known CVE.
 
 **EDA (Exploratory Data Analysis)**
-Análisis inicial de un dataset para entender su estructura, distribuciones, nulos y relaciones entre variables. Se hace en Jupyter Notebooks antes de construir el pipeline.
+Initial analysis of a dataset to understand its structure, distributions, nulls, and relationships between variables. Done in Jupyter Notebooks before building the pipeline.
 
 ---
 
 ## F
 
 **Feature**
-Una columna del dataset de entrada que el modelo usa para hacer su predicción. En este proyecto, ninguna feature existe tal cual en el dataset crudo — todas se construyen en el preprocessing a partir de los datos originales.
+A column of the input dataset that the model uses to make its prediction. In this project, no feature exists as is in the raw dataset — all are built in preprocessing from the original data.
 
-**Cómo se define una feature — 4 pasos:**
+**How a feature is defined — 4 steps:**
 
-1. **Identificar la señal** — en el EDA o en el análisis de FP se observa un patrón (ej: los ataques tienen URLs con chars percent-encoded; el tráfico normal tiene paths más profundos en la URL)
-2. **Transformar el dato crudo** — definir qué operación se aplica sobre qué columna (ej: `url.str.contains('%27')`, `url.str.len()`, `url.str.count('/')`)
-3. **Validar la señal** — calcular la correlación con el label, en la subpoblación relevante si corresponde
-4. **Decidir** — si la correlación es significativa y el impacto en métricas es positivo, se incorpora al preprocessing oficial
+1. **Identify the signal** — in the EDA or FP analysis a pattern is observed (e.g. attacks have URLs with percent-encoded chars; normal traffic has deeper paths in the URL)
+2. **Transform the raw data** — define what operation is applied on what column (e.g. `url.str.contains('%27')`, `url.str.len()`, `url.str.count('/')`)
+3. **Validate the signal** — calculate correlation with the label, in the relevant subpopulation if applicable
+4. **Decide** — if the correlation is significant and the impact on metrics is positive, it is incorporated into the official preprocessing
 
-**Tipos de features en este proyecto:**
+**Types of features in this project:**
 
-| Tipo | Ejemplo | Cómo se calcula |
+| Type | Example | How it is calculated |
 |---|---|---|
-| Binaria (0/1) | `url_has_pct27` | `url.str.contains('%27').astype('int8')` |
-| Entera | `url_length` | `url.str.len().astype('int32')` |
+| Binary (0/1) | `url_has_pct27` | `url.str.contains('%27').astype('int8')` |
+| Integer | `url_length` | `url.str.len().astype('int32')` |
 | Float | `url_pct_density` | `url.str.count('%') / url.str.len().clip(lower=1)` |
 | One-hot | `method_is_get` | `(method == 'GET').astype('int8')` |
 
-Ver también: *Feature engineering*, *Feature importance*, *Preprocessing exploratorio*, *Subpoblación*.
+See also: *Feature engineering*, *Feature importance*, *Exploratory preprocessing*, *Subpopulation*.
 
-**Feature ceiling (techo de features)**
-Situación donde múltiples algoritmos distintos alcanzan el mismo nivel de performance, indicando que el cuello de botella no es el modelo sino la información disponible en las features. En Modelo A (CSIC 2010): LR, RF, XGBoost y LightGBM todos se estancan en ~0.94 ROC-AUC. Cuando esto ocurre, cambiar de algoritmo no mejora los resultados — hay que agregar features nuevas o mejorar las existentes.
+**Feature ceiling**
+Situation where multiple different algorithms reach the same performance level, indicating that the bottleneck is not the model but the information available in the features. In Model A (CSIC 2010): LR, RF, XGBoost, and LightGBM all stall at ~0.94 ROC-AUC. When this happens, changing the algorithm does not improve results — new features must be added or existing ones improved.
 
-**False Positive analysis (análisis de falsos positivos)**
-Técnica de diagnóstico que examina qué características tienen en común los registros mal clasificados como positivos (FP). Permite entender por qué el modelo confunde tráfico legítimo con ataques. En Modelo A: los 1.886 FP no tienen ningún indicador de payload (`url_has_*` = 0) — el modelo los clasifica como ataque únicamente por tener URLs o bodies más largos. Esto orientó la creación de `url_pct_density` para dar contexto a la longitud.
+**False Positive analysis**
+Diagnostic technique that examines what characteristics incorrectly classified as positive (FP) records have in common. It allows understanding why the model confuses legitimate traffic with attacks. In Model A: the 1,886 FP do not have any payload indicator (`url_has_*` = 0) — the model classifies them as attack solely for having longer URLs or bodies. This guided the creation of `url_pct_density` to give context to the length.
 
 **False Positive rate (FPR)**
-Proporción de tráfico normal que el modelo clasifica incorrectamente como ataque. `FPR = FP / (FP + TN)`. Una FPR alta significa muchas falsas alarmas — el analista de seguridad recibe alertas que no son reales. Complementario a la Precision: `Precision = TP / (TP + FP)`, una Precision baja implica FPR alta.
+Proportion of normal traffic that the model incorrectly classifies as an attack. `FPR = FP / (FP + TN)`. A high FPR means many false alarms — the security analyst receives alerts that are not real. Complementary to Precision: `Precision = TP / (TP + FP)`, low Precision implies high FPR.
+
+**FPR in context of distribution shift:**
+In the CSIC 2010 dataset (41% attacks), FPR = 17.35% — out of every 100 normal requests, 17 are classified as an attack.
+
+In real production with a 99:1 distribution, the same threshold produces FPR = 17.41% — practically the same proportion of false alarms in absolute terms, but the impact is very different:
+
+- **Dataset (41% attacks):** out of 100 requests, ~59 are normal → 17 FP / 59 normal = 28.8% of the alarms are false
+- **Production (1% attacks):** out of 100 requests, ~99 are normal → 17 FP / 99 normal = 17.2% of the alarms are false
+
+Even with similar FPR, the quality of predictions differs because the base attack proportion is different. See also: *Distribution shift*, *Test set 99:1*.
 
 **fit / fit_transform / transform (scikit-learn)**
-Patrón estándar de scikit-learn para transformaciones que aprenden parámetros de los datos:
-- `fit(X_train)` — aprende los parámetros (ej: mediana e IQR del RobustScaler) **solo del training set**
-- `transform(X)` — aplica la transformación aprendida a cualquier conjunto
-- `fit_transform(X_train)` — atajo que hace fit + transform en un solo paso, solo para train
+Standard scikit-learn pattern for transformations that learn parameters from the data:
+- `fit(X_train)` — learns the parameters (e.g. median and IQR of the RobustScaler) **only from the training set**
+- `transform(X)` — applies the learned transformation to any set
+- `fit_transform(X_train)` — shortcut that does fit + transform in a single step, only for train
 
-Nunca usar `fit_transform` en el test set — eso sería data leakage. En `preprocess_unsw.py`: `scaler.fit_transform(train)` aprende la escala del train, `scaler.transform(test)` aplica esa misma escala al test.
+Never use `fit_transform` on the test set — that would be data leakage. In `preprocess_unsw.py`: `scaler.fit_transform(train)` learns the train's scale, `scaler.transform(test)` applies that same scale to the test.
 
-**Feature cross (feature cruzada)**
-Feature que combina dos señales existentes multiplicándolas o combinándolas lógicamente. Ejemplo: `post_has_pct27 = method_is_post AND url_has_pct27`. Captura patrones que ninguna de las dos features sola puede capturar. En este proyecto `post_has_pct27` resultó NaN — no había intersección suficiente en el dataset para generar señal.
+**Feature cross**
+Feature that combines two existing signals by multiplying or logically combining them. Example: `post_has_pct27 = method_is_post AND url_has_pct27`. Captures patterns that neither of the two features alone can capture. In this project `post_has_pct27` resulted in NaN — there was not enough intersection in the dataset to generate a signal.
 
-**Feature iteration (iteración de features)**
-Proceso de agregar, modificar o eliminar features a partir del análisis de los errores del modelo. Pasos típicos: (1) feature importance para identificar qué features aportan y cuáles son ruido, (2) análisis de falsos positivos/negativos para entender qué patrones el modelo no puede distinguir, (3) construir features nuevas que capturen esa señal faltante, (4) medir el impacto en las métricas. En este proyecto: iteración 1 en `notebooks/experiments/csic2010_feature_analysis.ipynb`.
+**Feature iteration**
+Process of adding, modifying, or eliminating features based on the analysis of model errors. Typical steps: (1) feature importance to identify which features contribute and which are noise, (2) false positive/negative analysis to understand what patterns the model cannot distinguish, (3) build new features that capture that missing signal, (4) measure impact on metrics. In this project: iteration 1 in `notebooks/experiments/csic2010_feature_analysis.ipynb`.
 
-**Feature redundancy (redundancia de features)**
-Situación donde dos o más features contienen casi la misma información. Se detecta con el coeficiente de correlación de Pearson entre features. Si dos features tienen correlación > 0.9, generalmente se puede descartar una sin perder capacidad predictiva. En UNSW-NB15: `swin`/`dwin` (0.99), `dpkts`/`dloss` (0.98). Reducir redundancias simplifica el modelo sin sacrificar performance.
+**Feature redundancy**
+Situation where two or more features contain almost the same information. Detected with the Pearson correlation coefficient between features. If two features have correlation > 0.9, one can usually be discarded without losing predictive capability. In UNSW-NB15: `swin`/`dwin` (0.99), `dpkts`/`dloss` (0.98). Reducing redundancies simplifies the model without sacrificing performance.
 
 **Fuzzer / Fuzzing**
-Técnica de ataque que envía input malformado, aleatorio o inesperado a un sistema para encontrar bugs, crashes o vulnerabilidades. Un fuzzer genera miles de variaciones de requests. En UNSW-NB15 representa el 15.2% de los ataques. Los fuzzers generan patrones de tráfico con alta variabilidad en `sbytes` y número de paquetes.
+Attack technique that sends malformed, random, or unexpected input to a system to find bugs, crashes, or vulnerabilities. A fuzzer generates thousands of request variations. In UNSW-NB15 it represents 15.2% of attacks. Fuzzers generate traffic patterns with high variability in `sbytes` and packet number.
 
 **F1 Score**
-Media armónica de Precision y Recall. Resume ambas métricas en un solo número.
+Harmonic mean of Precision and Recall. Summarizes both metrics into a single number.
 
 `F1 = 2 × (Precision × Recall) / (Precision + Recall)`
 
-A diferencia de la media aritmética, la media armónica penaliza fuertemente cuando una de las dos métricas es baja. Un modelo con Recall 0.977 y Precision 0.417 tiene F1 = 0.584 — lejos del 1.0, aunque el Recall sea alto.
+Unlike the arithmetic mean, the harmonic mean strongly penalizes when one of the two metrics is low. A model with Recall 0.977 and Precision 0.417 has F1 = 0.584 — far from 1.0, even if Recall is high.
 
-**Cuándo usarlo:** cuando no hay prioridad clara entre Precision y Recall (ej: Modelo B — UNSW-NB15, donde el criterio es F1 ≥ 0.88). **Cuándo NO usarlo como criterio principal:** cuando las métricas tienen pesos distintos — como en Modelo A, donde Recall ≥ 0.95 es no negociable y Precision ≥ 0.85 es el objetivo secundario. En ese caso, F1 puede enmascarar que un modelo cumple uno de los dos criterios pero no el otro. Se loggea en cada run para referencia, pero no es la métrica de decisión en Modelo A.
+**When to use it:** when there is no clear priority between Precision and Recall (e.g. Model B — UNSW-NB15, where the criterion is F1 ≥ 0.88). **When NOT to use it as the main criterion:** when the metrics have different weights — as in Model A, where Recall ≥ 0.95 is non-negotiable and Precision ≥ 0.85 is the secondary target. In that case, F1 can mask that a model meets one of the two criteria but not the other. It is logged in each run for reference, but it is not the decision metric in Model A.
 
 **False Negative (FN)**
-El modelo predijo *benign* pero era un ataque. En seguridad, el error más costoso.
+The model predicted *benign* but it was an attack. In security, the most costly error.
 
 **False Positive (FP)**
-El modelo predijo *attack* pero era tráfico legítimo. Genera alertas innecesarias.
+The model predicted *attack* but it was legitimate traffic. Generates unnecessary alerts.
 
 **Feature engineering**
-Proceso de crear o transformar variables a partir de los datos crudos para mejorar el desempeño del modelo. En CSIC 2010: convertir la URL cruda en indicadores binarios como `url_has_pct27` o `url_length`. Las features no existen en el dataset original — se construyen a partir de él.
+Process of creating or transforming variables from raw data to improve model performance. In CSIC 2010: convert raw URL to binary indicators like `url_has_pct27` or `url_length`. Features do not exist in the original dataset — they are built from it.
 
 **Feature importance**
-Medida de cuánto contribuye cada feature a las predicciones del modelo. En árboles de decisión y Random Forest, se puede calcular directamente. Permite identificar qué variables tienen más poder discriminativo y descartar las que no aportan.
+Measure of how much each feature contributes to model predictions. In decision trees and Random Forest, it can be computed directly. Allows identifying which variables have more discriminative power and discarding those that do not contribute.
 
 **False Negative rate (FNR)**
-Proporción de ataques reales que el modelo no detectó. `FNR = FN / (FN + TP)`. Complementario al Recall: `FNR = 1 - Recall`. En seguridad, minimizar el FNR es prioritario.
+Proportion of real attacks that the model failed to detect. `FNR = FN / (FN + TP)`. Complementary to Recall: `FNR = 1 - Recall`. In security, minimizing FNR is a priority.
 
 ---
 
 ## L
 
 **Label**
-Valor de la variable objetivo.
+Target variable value.
 
 **LightGBM (Light Gradient Boosting Machine)**
-Variante de Gradient Boosting desarrollada por Microsoft, optimizada para velocidad y eficiencia de memoria. Construye árboles de forma leaf-wise (crece por las hojas con mayor ganancia) en lugar de level-wise como XGBoost. Más rápido en datasets grandes. Hiperparámetro clave: `scale_pos_weight` para desbalance.
+Gradient Boosting variant developed by Microsoft, optimized for speed and memory efficiency. Builds trees leaf-wise (grows by the leaves with the greatest gain) instead of level-wise like XGBoost. Faster on large datasets. Key hyperparameter: `scale_pos_weight` for imbalance.
 
-Usado en: **Modelo A (CSIC 2010)**. Resultado: ROC-AUC 0.941 (mejor ROC-AUC del grupo), Recall 0.953 ✅, Precision 0.654 ❌ — resultados casi idénticos a Random Forest.
-Pendiente en: **Modelo B (UNSW-NB15)** — todavía no entrenado.
+Used in: **Model A (CSIC 2010)**. Result: ROC-AUC 0.941 (best ROC-AUC of the group), Recall 0.953 ✅, Precision 0.654 ❌ — results almost identical to Random Forest.
+Pending in: **Model B (UNSW-NB15)** — not yet trained.
 
-**Logistic Regression (regresión logística)**
-Modelo de clasificación lineal que estima la probabilidad de que una muestra pertenezca a la clase positiva. A pesar del nombre, es un clasificador. Calcula una combinación lineal de las features y la pasa por una función sigmoide para obtener una probabilidad entre 0 y 1. Es el modelo más simple para clasificación — sirve como baseline. Sus limitaciones: no captura relaciones no-lineales entre features.
+**Logistic Regression**
+Linear classification model that estimates the probability that a sample belongs to the positive class. Despite the name, it is a classifier. It calculates a linear combination of the features and passes it through a sigmoid function to obtain a probability between 0 and 1. It is the simplest model for classification — serves as a baseline. Its limitations: it does not capture non-linear relationships between features.
 
-Usado en: **Modelo A (CSIC 2010)** como baseline. Resultado: ROC-AUC 0.761, predice todo como ataque — Precision 0.411 ❌. Descartado. En este proyecto: `0` = benign, `1` = malicious. Consistente en ambos modelos.
+Used in: **Model A (CSIC 2010)** as baseline. Result: ROC-AUC 0.761, predicts everything as attack — Precision 0.411 ❌. Discarded. In this project: `0` = benign, `1` = malicious. Consistent in both models.
 
 ---
 
 ## M
 
-**Modelos evaluados — resumen por dataset**
+**Evaluated models — summary by dataset**
 
-| Modelo | Modelo A (CSIC 2010) | Modelo B (UNSW-NB15) |
+| Model | Model A (CSIC 2010) | Model B (UNSW-NB15) |
 |---|---|---|
-| Logistic Regression | ✅ ejecutado — ROC-AUC 0.761 ❌ descartado | — |
-| Random Forest | ✅ ejecutado — ROC-AUC 0.939, Recall ✅ Precision ❌ | 🔄 pendiente (será baseline) |
-| XGBoost | ✅ ejecutado — ROC-AUC 0.933, Recall ✅ Precision ❌ | 🔄 pendiente |
-| LightGBM | ✅ ejecutado — ROC-AUC 0.941, Recall ✅ Precision ❌ | 🔄 pendiente |
+| Logistic Regression | ✅ executed — ROC-AUC 0.761 ❌ discarded | — |
+| Random Forest | ✅ executed — ROC-AUC 0.939, Recall ✅ Precision ❌ | 🔄 pending (will be baseline) |
+| XGBoost | ✅ executed — ROC-AUC 0.933, Recall ✅ Precision ❌ | 🔄 pending |
+| LightGBM | ✅ executed — ROC-AUC 0.941, Recall ✅ Precision ❌ | 🔄 pending |
 
-Todos los modelos de Modelo A cumplen Recall ≥ 0.95 pero ninguno alcanza Precision ≥ 0.85. El cuello de botella son las features, no el algoritmo — todos llegan al mismo techo de ~0.94 ROC-AUC.
+All Model A models meet Recall ≥ 0.95 but none reach Precision ≥ 0.85. The bottleneck is the features, not the algorithm — all hit the same ~0.94 ROC-AUC ceiling.
 
-**Machine Learning model (modelo ML)**
-Algoritmo que aprende patrones a partir de datos de entrenamiento para hacer predicciones sobre datos nuevos. En clasificación binaria: aprende a distinguir entre dos clases (ej: normal vs ataque). El modelo no programa reglas explícitas — las infiere de los ejemplos. Tres componentes clave: **arquitectura** (qué tipo de modelo), **parámetros** (lo que aprende durante el training), e **hiperparámetros** (configuración que se fija antes de entrenar, ej: `n_estimators` en Random Forest).
+**Machine Learning model**
+Algorithm that learns patterns from training data to make predictions on new data. In binary classification: learns to distinguish between two classes (e.g. normal vs attack). The model does not program explicit rules — it infers them from the examples. Three key components: **architecture** (what kind of model), **parameters** (what it learns during training), and **hyperparameters** (configuration set before training, e.g. `n_estimators` in Random Forest).
 
 **Malware**
-Software malicioso diseñado para dañar, acceder sin autorización, o comprometer sistemas. En UNSW-NB15 aparece como subcategorías: Backdoor (acceso remoto oculto), Shellcode (ejecución de código arbitrario), Worms (auto-propagación en red). Juntos representan solo el 2.5% de los ataques en el dataset — el modelo va a tener pocos ejemplos de estos patrones.
+Malicious software designed to damage, access without authorization, or compromise systems. In UNSW-NB15 it appears as subcategories: Backdoor (hidden remote access), Shellcode (arbitrary code execution), Worms (network self-propagation). Together they represent only 2.5% of attacks in the dataset — the model will have few examples of these patterns.
 
 **Malicious (label 1)**
-Sinónimo de *Attack* en el contexto del Modelo B (UNSW-NB15).
+Synonym for *Attack* in the context of Model B (UNSW-NB15).
+
+**Mutual Information (MI)**
+Measure of dependence between two variables that does not assume any type of relationship (linear, quadratic, etc.). Measures how much information one variable shares about the other: MI(X;Y) = 0 means X and Y are independent; high MI(X;Y) means knowing X reduces uncertainty about Y.
+
+Unlike Pearson (only linear), MI captures any type of dependence. Especially useful for:
+- Binary features where Pearson can be low even if the relationship is strong
+- Non-monotonic relationships between variables
+- Discrete variables with many unique values
+
+Calculated with scikit-learn's `mutual_info_classif`:
+
+```python
+from sklearn.feature_selection import mutual_info_classif
+
+mi_scores = mutual_info_classif(
+    X, y,
+    discrete_features=True,   # all features in CSIC 2010 are binary or integer
+    random_state=42,
+    n_neighbors=5
+)
+```
+
+**Criteria used in this project:**
+- **MI with label > 0.05:** feature provides useful signal
+- **MI between pairs > 0.3:** possible redundancy
+- **Spearman ρ > 0.7:** monotonic correlation (complements MI for redundancy)
+
+**Results in Model A (2026-04-20):**
+
+| Feature | MI with label | Interpretation |
+|---|---|---|
+| url_length | 0.2108 | ██████ High — strongest signal |
+| url_query_length | 0.1132 | ███ Medium |
+| content_param_density | 0.1081 | ███ Medium |
+| content_length | 0.1077 | ███ Medium |
+| content_pct_density | 0.0811 | ██ Low |
+| url_pct_density | 0.0760 | ██ Low |
+| method_is_put | 0.0058 | ○ Insignificant |
+| url_has_select | 0.0015 | ○ Noise |
+| content_has_select | 0.0014 | ○ Noise |
+
+See also: *Feature redundancy*, *Ablation*, *Spearman correlation*.
 
 **MLflow**
-Plataforma de experiment tracking. Registra parámetros, métricas y artefactos de cada run de entrenamiento. Los tres conceptos clave son: **Experiment** (agrupa runs del mismo modelo), **Run** (una ejecución individual con su metadata completa), y **Backend store** (donde se persiste todo — en este proyecto, SQLite). Primera integración en el proyecto: `csic2010_feature_analysis_v3.ipynb`. Para levantar la UI: `mlflow ui --backend-store-uri "sqlite:///mlflow.db"` → http://localhost:5000.
+Experiment tracking platform. Logs parameters, metrics, and artifacts for each training run. The three key concepts are: **Experiment** (groups runs for the same model), **Run** (an individual execution with its complete metadata), and **Backend store** (where everything is persisted — in this project, SQLite). First integration in the project: `csic2010_feature_analysis_v3.ipynb`. To bring up the UI: `mlflow ui --backend-store-uri "sqlite:///mlflow.db"` → http://localhost:5000.
 
 **MLflow Experiment**
-Agrupador lógico de runs del mismo modelo o familia de experimentos. En este proyecto hay un experiment por modelo: `mlsec-model-a` (CSIC 2010) y `mlsec-model-b` (UNSW-NB15). Todos los runs de un mismo modelo van al mismo experiment, lo que permite comparar iteraciones directamente en la UI.
+Logical grouper for runs of the same model or family of experiments. In this project there is one experiment per model: `mlsec-model-a` (CSIC 2010) and `mlsec-model-b` (UNSW-NB15). All runs for the same model go to the same experiment, which allows comparing iterations directly in the UI.
 
 **Model registry**
-Componente de MLflow donde se guardan los modelos que superaron los criterios de éxito, listos para inferencia.
+MLflow component where models that passed success criteria are saved, ready for inference.
 
 ---
 
 ## I
 
-**IQR (Interquartile Range — rango intercuartil)**
-Diferencia entre el percentil 75 (P75) y el percentil 25 (P25) de una distribución. `IQR = P75 - P25`. Mide la dispersión del 50% central de los datos, ignorando los extremos. Es resistente a outliers — un valor extremo no lo distorsiona. Usado por `RobustScaler` como denominador de la normalización: `(x - mediana) / IQR`.
+**IQR (Interquartile Range)**
+Difference between the 75th percentile (P75) and the 25th percentile (P25) of a distribution. `IQR = P75 - P25`. Measures the spread of the central 50% of the data, ignoring extremes. It is resistant to outliers — an extreme value does not distort it. Used by `RobustScaler` as the normalization denominator: `(x - median) / IQR`.
 
-**Imbalanced classes** → ver *Class imbalance*.
+**Imbalanced classes** → see *Class imbalance*.
 
 ---
 
 ## N
 
 **NaN (Not a Number)**
-Valor faltante en pandas/numpy. En CSIC 2010, `content` y `lenght` son NaN en requests GET — no es un error de datos sino el comportamiento esperado del protocolo HTTP (los GETs no tienen body). Distinguir entre NaN estructural (esperado) y NaN por error de datos es una tarea del EDA.
+Missing value in pandas/numpy. In CSIC 2010, `content` and `length` are NaN in GET requests — it is not a data error but the expected behavior of the HTTP protocol (GETs do not have a body). Distinguishing between structural NaN (expected) and data error NaN is an EDA task.
 
 **Normal (label 0)**
-Sinónimo de *Benign* en el contexto del Modelo A (CSIC 2010).
+Synonym for *Benign* in the context of Model A (CSIC 2010).
 
 ---
 
 ## O
 
 **Ordinal encoding**
-Alternativa a one-hot encoding para variables categóricas. Asigna un número entero a cada categoría (ej: tcp=0, udp=1, arp=2). Más compacto que one-hot pero introduce un orden artificial que puede confundir al modelo (¿tcp < udp?). Útil para árboles de decisión que no son sensibles al orden, pero problemático para modelos lineales.
+Alternative to one-hot encoding for categorical variables. Assigns an integer to each category (e.g. tcp=0, udp=1, arp=2). More compact than one-hot but introduces an artificial order that can confuse the model (is tcp < udp?). Useful for decision trees that are not sensitive to order, but problematic for linear models.
 
 **Outlier**
-Valor extremo que se aleja significativamente de la distribución del resto de los datos. En features de red como `sbytes` o `dur`, es común encontrar outliers por conexiones anómalas o ataques volumétricos. Los outliers pueden distorsionar modelos lineales y la normalización — se detectan con boxplots e IQR, y se tratan con clipping o transformaciones logarítmicas.
+Extreme value that significantly deviates from the distribution of the rest of the data. In network features like `sbytes` or `dur`, it is common to find outliers due to anomalous connections or volumetric attacks. Outliers can distort linear models and normalization — they are detected with boxplots and IQR, and handled with clipping or logarithmic transformations.
 
 **One-hot encoding**
-Técnica para convertir una variable categórica en múltiples columnas binarias. Ejemplo: la columna `Method` con valores GET/POST/PUT se convierte en tres columnas: `method_is_get`, `method_is_post`, `method_is_put`. Cada fila tiene exactamente un `1` y el resto `0`. Necesario para que los algoritmos ML puedan procesar variables categóricas.
+Technique to convert a categorical variable into multiple binary columns. Example: the `Method` column with GET/POST/PUT values becomes three columns: `method_is_get`, `method_is_post`, `method_is_put`. Each row has exactly one `1` and the rest `0`. Necessary so ML algorithms can process categorical variables.
 
 **Offline detection**
-Modalidad de detección donde el modelo evalúa logs o tráfico ya capturado, sin bloquear en tiempo real. Es el modo del MVP.
+Detection mode where the model evaluates logs or already captured traffic, without blocking in real time. It is the MVP mode.
 
 ---
 
 ## P
 
 **Protocol (proto)**
-En redes, el protocolo de transporte usado por una conexión. Los más comunes en UNSW-NB15: `tcp` (orientado a conexión, confiable), `udp` (sin conexión, más rápido pero sin garantías), `arp` (resolución de direcciones IP a MAC). La columna `proto` tiene 133 valores únicos — se reduce a top-10 + `other` para el modelo.
+In networks, the transport protocol used by a connection. Most common in UNSW-NB15: `tcp` (connection-oriented, reliable), `udp` (connectionless, faster but without guarantees), `arp` (IP to MAC address resolution). The `proto` column has 133 unique values — it is reduced to top-10 + `other` for the model.
 
 **Parquet**
-Formato de archivo columnar binario, optimizado para análisis de datos. Más eficiente que CSV: compresión nativa, preserva dtypes (incluido `category`), lectura mucho más rápida. UNSW-NB15 viene en parquet — por eso los dtypes ya están correctos al cargarlo. En pipelines ML se prefiere sobre CSV para datos procesados.
+Binary columnar file format, optimized for data analysis. More efficient than CSV: native compression, preserves dtypes (including `category`), much faster read. UNSW-NB15 comes in parquet — that's why dtypes are already correct when loading it. In ML pipelines it is preferred over CSV for processed data.
 
 **Percent-encoding (URL encoding)**
-Mecanismo para representar caracteres especiales en una URL o body HTTP usando el formato `%XX` donde XX es el código hexadecimal del carácter. Ejemplos: `'` → `%27`, `<` → `%3C`, `>` → `%3E`, `;` → `%3B`. En el EDA de CSIC 2010 se descubrió que los atacantes siempre usan percent-encoding para evadir filtros — los chars literales nunca aparecen en las URLs del dataset.
+Mechanism to represent special characters in a URL or HTTP body using the `%XX` format where XX is the character's hex code. Examples: `'` → `%27`, `<` → `%3C`, `>` → `%3E`, `;` → `%3B`. In the CSIC 2010 EDA it was discovered that attackers always use percent-encoding to evade filters — literal chars never appear in the dataset's URLs.
 
-**Percent-encoding — Latin-1 vs ataque**
-Distinción crítica descubierta en el análisis de FP de v6: no todo `%XX` es sospechoso. Existen dos categorías con significado radicalmente distinto:
+**Percent-encoding — Latin-1 vs attack**
+Critical distinction discovered in v6 FP analysis: not every `%XX` is suspicious. There are two categories with radically different meaning:
 
-| Categoría | Rango hex | Ejemplos concretos | Quién lo usa |
+| Category | Hex range | Concrete examples | Who uses it |
 |---|---|---|---|
-| **Ataque** | `%00`–`%3F` | `%27`=`'`, `%3C`=`<`, `%3E`=`>`, `%3B`=`;` | SQLi, XSS, path traversal |
-| **Latin-1 inofensivo** | `%C0`–`%FF` | `%F1`=`ñ`, `%ED`=`í`, `%FA`=`ú`, `%E1`=`á`, `%F3`=`ó` | Texto español/europeo en formularios normales |
+| **Attack** | `%00`–`%3F` | `%27`=`'`, `%3C`=`<`, `%3E`=`>`, `%3B`=`;` | SQLi, XSS, path traversal |
+| **Harmless Latin-1** | `%C0`–`%FF` | `%F1`=`n-tilde`, `%ED`=`i-acute`, `%FA`=`u-acute`, `%E1`=`a-acute`, `%F3`=`o-acute` | Spanish/European text in normal forms |
 
-**El problema en CSIC 2010:** la feature `content_pct_density` cuenta todos los `%XX` por igual. Un formulario español con `apellidos=Murgu%EDa` o `password=lIMpi%24a%FA%F1as` tiene alta densidad de `%` — pero son vocales acentuadas, no payloads de inyección. El modelo los clasifica como ataque porque ve la misma señal que en `%27%20OR%201%3D1`.
+**The problem in CSIC 2010:** the `content_pct_density` feature counts all `%XX` equally. A Spanish form with `apellidos=Murgu%EDa` or `password=lIMpi%24a%FA%F1as` has high `%` density — but they are accented vowels, not injection payloads. The model classifies them as an attack because it sees the same signal as in `%27%20OR%201%3D1`.
 
-**¿Por qué los ataques nunca usan Latin-1?**
+**Why attackers never use Latin-1?**
 
-Tres razones técnicas:
+Three technical reasons:
 
-1. **El payload tiene que ser interpretado como código.** Para que `' OR 1=1--` funcione como SQLi, el parser SQL del servidor tiene que leer esa cadena como sintaxis SQL válida. Un parser SQL no espera `ñ` — si el payload incluye `%F1`, el parser probablemente falla o ignora el contenido antes del carácter inválido. El atacante pierde control del payload.
+1. **The payload has to be interpreted as code.** For `' OR 1=1--` to work as SQLi, the server's SQL parser has to read that string as valid SQL syntax. A SQL parser does not expect `n-tilde` — if the payload includes `%F1`, the parser likely fails or ignores the content before the invalid character. The attacker loses control of the payload.
 
-2. **Los atacantes usan payloads mínimos y precisos.** Un payload efectivo es `' OR 1=1--` — nada más. Caracteres innecesarios aumentan el riesgo de que un WAF rechace el request o que el servidor falle al parsear. El encoding Latin-1 no aporta nada al ataque y solo añade ruido.
+2. **Attackers use minimal and precise payloads.** An effective payload is `' OR 1=1--` — nothing else. Unnecessary characters increase the risk of a WAF rejecting the request or the server failing to parse. Latin-1 encoding adds nothing to the attack and only adds noise.
 
-3. **El encoding Latin-1 puede corromper el payload.** Si el servidor interpreta el body como ASCII o UTF-8, un `%F1` puede corromper el string completo dependiendo del encoding esperado. Un atacante experimentado no mezcla encodings.
+3. **Latin-1 encoding can corrupt the payload.** If the server interprets the body as ASCII or UTF-8, a `%F1` can corrupt the entire string depending on the expected encoding. An experienced attacker does not mix encodings.
 
-**¿Un ataque con ñ tendría más chances de éxito?** No — al revés. Más caracteres innecesarios = más ruido = más chances de detección o rechazo. Los payloads de inyección exitosos son quirúrgicos.
+**Would an attack with n-tilde have more chances of success?** No — the opposite. More unnecessary characters = more noise = more chances of detection or rejection. Successful injection payloads are surgical.
 
-**La asimetría práctica:** en el dataset CSIC 2010, cero ataques tienen `%F1` o `%ED` en su payload. El 100% de los requests con `%F1` son formularios legítimos con nombres españoles. Esta separación perfecta en la práctica es la señal que `content_pct_latin1_density` y `url_pct_latin1_density` buscan capturar en v7.
+**The practical asymmetry:** in the CSIC 2010 dataset, zero attacks have `%F1` or `%ED` in their payload. 100% of requests with `%F1` are legitimate forms with Spanish names. This perfect separation in practice is the signal that `content_pct_latin1_density` and `url_pct_latin1_density` seek to capture in v7.
 
-**Caso borde:** apellidos como `D'Amico` → `D%27Amico` usan `%27` legítimamente (apóstrofe en nombre propio). Son 8 FP sobre 938 (0.9%) — inevitables con features de texto sin análisis de contexto semántico. Ver también: *Percent-encoding*, *False Positive*, *content_pct_density*.
+**Edge case:** surnames like `D'Amico` → `D%27Amico` use `%27` legitimately (apostrophe in proper name). They are 8 FPs out of 938 (0.9%) — inevitable with text features without semantic context analysis. See also: *Percent-encoding*, *False Positive*, *content_pct_density*.
 
-**Power discriminativo**
-Capacidad de una feature para separar clases. Una feature con alto poder discriminativo tiene distribuciones muy distintas entre la clase 0 y la clase 1. En CSIC 2010: `method_is_put` tiene poder discriminativo perfecto (100% de los PUT son ataques).
+**Discriminative power**
+A feature's capacity to separate classes. A feature with high discriminative power has very different distributions between class 0 and class 1. In CSIC 2010: `method_is_put` has perfect discriminative power (100% of PUTs are attacks).
 
 **Preprocessing**
-Etapa del pipeline donde los datos crudos se transforman en features listas para el modelo. Incluye: eliminar columnas irrelevantes, encodear categóricas, normalizar numéricas, manejar nulos, y construir nuevas features. Es la implementación en script de las decisiones tomadas en el EDA. Ver también: *Preprocessing exploratorio*.
+Pipeline stage where raw data is transformed into features ready for the model. Includes: dropping irrelevant columns, encoding categoricals, normalizing numerics, handling nulls, and building new features. It is the script implementation of the decisions made in the EDA. See also: *Exploratory preprocessing*.
 
-**Preprocessing exploratorio**
-Código de construcción de features que vive **dentro de un notebook de experimento**, no en un script oficial. Su objetivo es probar una feature candidata en memoria antes de comprometerse a incorporarla al pipeline.
+**Exploratory preprocessing**
+Feature building code that lives **inside an experiment notebook**, not in an official script. Its goal is to test a candidate feature in memory before committing to incorporating it into the pipeline.
 
-Características clave:
-- No genera ningún archivo a disco — las features existen solo mientras corre el notebook
-- Si la feature no tiene señal, se descarta sin rastro en el código oficial
-- Si hay señal (paso 7 del flujo exploratorio), el código del notebook sirve de referencia para escribir el `preprocess_csic_vN.py`
+Key characteristics:
+- Generates no file to disk — features exist only while the notebook runs
+- If the feature has no signal, it is discarded without a trace in the official code
+- If there is a signal (step 7 of exploratory flow), the notebook code serves as reference to write `preprocess_csic_vN.py`
 
-**Diferencia con Preprocessing oficial:**
+**Difference with Official Preprocessing:**
 
-| | Oficial (`src/mlsec/data/preprocess_csic_vN.py`) | Exploratorio (dentro del notebook) |
+| | Official (`src/mlsec/data/preprocess_csic_vN.py`) | Exploratory (inside notebook) |
 |---|---|---|
-| Output | Parquet estable en `data/processed/` | Nada — solo en memoria |
-| Reproducible | Sí | Solo en el contexto del notebook |
-| Descartable | No | Sí — si no hay señal |
+| Output | Stable parquet in `data/processed/` | Nothing — only in memory |
+| Reproducible | Yes | Only in notebook context |
+| Disposable | No | Yes — if there is no signal |
 
-Ver también: *Preprocessing*, *Feature*, *Subpoblación*, *Experimentos — Preprocessing oficial vs Preprocessing exploratorio*.
+See also: *Preprocessing*, *Feature*, *Subpopulation*, *Experiments — Official Preprocessing vs Exploratory Preprocessing*.
 
 **Precision**
-De todos los que el modelo predijo como ataque, ¿cuántos realmente lo eran?
+Of all those the model predicted as attack, how many really were?
 `Precision = TP / (TP + FP)`
 
-Ejemplo: el modelo disparó 150 alarmas. Solo 95 eran ataques reales → Precision = 95/150 = 0.63. Las 55 alarmas de más son Falsos Positivos — tráfico normal clasificado como ataque. Una Precision baja inunda al analista de seguridad con alertas falsas. Criterio mínimo Modelo A: **Precision ≥ 0.85**. Ver también: *Precision vs Recall — trade-off*.
+Example: the model fired 150 alarms. Only 95 were real attacks → Precision = 95/150 = 0.63. The extra 55 alarms are False Positives — normal traffic classified as an attack. A low Precision floods the security analyst with false alerts. Model A minimum criterion: **Precision ≥ 0.85**. See also: *Precision vs Recall — trade-off*.
 
 **Pipeline**
-Secuencia de pasos de transformación y modelado. En este proyecto: ingest → preprocess → train → evaluate → register.
+Sequence of transformation and modeling steps. In this project: ingest → preprocess → train → evaluate → register.
 
 ---
 
 ## R
 
 **Random Forest**
-Modelo de ensemble que construye múltiples árboles de decisión **en paralelo**, cada uno sobre una muestra aleatoria del dataset. Es el segundo modelo evaluado en Modelo A y será el baseline de Modelo B.
+Ensemble model that builds multiple decision trees **in parallel**, each on a random sample of the dataset. It is the second model evaluated in Model A and will be the baseline for Model B.
 
-**Cómo funciona — 3 mecanismos clave:**
+**How it works — 3 key mechanisms:**
 
 **1. Bootstrap sampling (bagging)**
-Cada árbol se entrena sobre una muestra con reemplazo del dataset. Si hay 10.000 filas, cada árbol ve ~6.300 filas distintas (el ~63.2% estadístico del muestreo con reemplazo). Las filas no seleccionadas se usan para el "out-of-bag error" — validación gratuita sin necesidad de un val set separado. Esto hace que los árboles sean distintos entre sí, aunque todos usen el mismo dataset.
+Each tree is trained on a sample with replacement from the dataset. If there are 10,000 rows, each tree sees ~6,300 distinct rows (the statistical ~63.2% of sampling with replacement). Unselected rows are used for the "out-of-bag error" — free validation without needing a separate val set. This makes the trees different from each other, even though they all use the same dataset.
 
 **2. Random feature subsets**
-En cada nodo de cada árbol, solo se evalúa un subconjunto aleatorio de features para decidir la división. Por defecto en clasificación: `max_features = sqrt(n_features)`. Con 22 features → cada nodo evalúa ~4-5 features al azar. Esto fuerza diversidad: ningún árbol puede depender siempre de las features más fuertes, lo que reduce el sobreajuste.
+At each node of each tree, only a random subset of features is evaluated to decide the split. Default in classification: `max_features = sqrt(n_features)`. With 22 features → each node evaluates ~4-5 random features. This forces diversity: no tree can always rely on the strongest features, which reduces overfitting.
 
-**3. Promedio de probabilidades**
-La predicción final es el **promedio** de las probabilidades de todos los árboles. Un árbol aislado puede memorizar el training set (alta varianza). El promedio de 200 árboles con distintos datos y distintas features tiende a cancelar esos errores individuales y generaliza mejor.
+**3. Probability averaging**
+The final prediction is the **average** of the probabilities of all trees. An isolated tree can memorize the training set (high variance). The average of 200 trees with different data and different features tends to cancel out those individual errors and generalizes better.
 
-**Por qué es mejor que un solo árbol de decisión:**
-Un árbol individual tiene alta varianza — memoriza el training set pero falla en datos nuevos. Random Forest reduce esa varianza promediando muchos árboles distintos, sin sacrificar la capacidad de capturar relaciones no-lineales.
+**Why it's better than a single decision tree:**
+An individual tree has high variance — it memorizes the training set but fails on new data. Random Forest reduces that variance by averaging many different trees, without sacrificing the ability to capture non-linear relationships.
 
-**Por qué es mejor que Logistic Regression para este problema:**
-LR asume que la frontera de decisión es lineal — que cada feature contribuye de forma independiente y aditiva. Los ataques web no siguen ese patrón: una URL larga *sin* indicadores de payload es tráfico normal; larga *con* `%27` es ataque. La combinación importa. RF captura esas interacciones sin que se construyan features cruzadas manualmente.
+**Why it's better than Logistic Regression for this problem:**
+LR assumes the decision boundary is linear — that each feature contributes independently and additively. Web attacks don't follow that pattern: a long URL *without* payload indicators is normal traffic; a long URL *with* `%27` is an attack. The combination matters. RF captures those interactions without manually building crossed features.
 
-**Hiperparámetros clave en este proyecto:**
+**Key hyperparameters in this project:**
 
-| Parámetro | Valor | Por qué |
+| Parameter | Value | Why |
 |---|---|---|
-| `n_estimators` | 200 | 200 árboles — suficiente para estabilidad, sin rendimientos decrecientes notables |
-| `class_weight='balanced'` | automático | Compensa el desbalance 59/41 — penaliza más los errores en la clase minoritaria |
-| `max_features` | `'sqrt'` (default) | Subconjunto aleatorio en cada nodo — fuerza diversidad entre árboles |
-| `random_state` | 42 | Reproducibilidad — mismo resultado en cada ejecución |
-| `n_jobs` | -1 | Usa todos los cores disponibles — los árboles se construyen en paralelo |
+| `n_estimators` | 200 | 200 trees — enough for stability, without notable diminishing returns |
+| `class_weight='balanced'` | automatic | Compensates the 59/41 imbalance — penalizes minority class errors more |
+| `max_features` | `'sqrt'` (default) | Random subset at each node — forces diversity among trees |
+| `random_state` | 42 | Reproducibility — same result on every run |
+| `n_jobs` | -1 | Uses all available cores — trees are built in parallel |
 
-**Resultados en Modelo A (CSIC 2010):**
+**Results in Model A (CSIC 2010):**
 
-| Versión | ROC-AUC | Recall | Precision | FP |
+| Version | ROC-AUC | Recall | Precision | FP |
 |---|---|---|---|---|
 | Baseline (15 features) | 0.939 | 0.951 ✅ | 0.655 ❌ | 1886 |
 | v4 (22 features) | 0.961 | 0.949 ❌ | 0.779 ❌ | 1011 |
 
-Pendiente en: **Modelo B (UNSW-NB15)** como baseline — todavía no entrenado. Ver también: *Feature importance*, *class_weight='balanced'*, *XGBoost*, *LightGBM*, *Decision threshold*.
+Pending in: **Model B (UNSW-NB15)** as baseline — not yet trained. See also: *Feature importance*, *class_weight='balanced'*, *XGBoost*, *LightGBM*, *Decision threshold*.
 
 **RobustScaler**
-Normalizador de scikit-learn que usa la mediana y el IQR (rango intercuartil) en lugar de la media y la desviación estándar. Resistente a outliers — los valores extremos no distorsionan la escala. Fórmula: `(x - mediana) / IQR`. Estrategia elegida para UNSW-NB15 dado los outliers extremos en features como `sbytes`, `sload`, `sjit`.
+scikit-learn normalizer that uses median and IQR (interquartile range) instead of mean and standard deviation. Resistant to outliers — extreme values do not distort the scale. Formula: `(x - median) / IQR`. Chosen strategy for UNSW-NB15 given the extreme outliers in features like `sbytes`, `sload`, `sjit`.
 
 **Reconnaissance**
-Fase de un ataque donde el atacante escanea y recopila información sobre el objetivo — puertos abiertos, servicios activos, versiones de software. No causa daño directo pero es precursor de ataques más severos. En UNSW-NB15 representa el 8.8% de los ataques. Se detecta por patrones de escaneo: muchos paquetes pequeños hacia distintos puertos.
+Phase of an attack where the attacker scans and gathers information about the target — open ports, active services, software versions. Causes no direct harm but is a precursor to more severe attacks. In UNSW-NB15 it represents 8.8% of attacks. Detected by scanning patterns: many small packets to different ports.
 
 **Recall (Sensitivity)**
-De todos los ataques reales, ¿cuántos detectó el modelo?
+Of all the real attacks, how many did the model detect?
 `Recall = TP / (TP + FN)`
 
-Ejemplo: hay 100 ataques reales. El modelo detecta 95 → Recall = 0.95. Los 5 no detectados son Falsos Negativos — ataques que pasaron sin alarma. En seguridad es la métrica más importante porque un ataque no detectado es peor que una falsa alarma. Criterio mínimo Modelo A: **Recall ≥ 0.95**.
+Example: there are 100 real attacks. The model detects 95 → Recall = 0.95. The 5 undetected are False Negatives — attacks that passed without alarm. In security it is the most important metric because an undetected attack is worse than a false alarm. Model A minimum criterion: **Recall ≥ 0.95**.
 
 **Precision vs Recall — trade-off**
-No se pueden maximizar ambas métricas al mismo tiempo con el mismo modelo. Si bajás el threshold para detectar más ataques (↑ Recall), inevitablemente clasificás más tráfico normal como ataque (↓ Precision). Si subís el threshold para reducir falsas alarmas (↑ Precision), dejás pasar más ataques (↓ Recall). La curva Precision-Recall visualiza este trade-off en todos los thresholds posibles. El threshold óptimo se elige según qué error tiene mayor costo — en seguridad, el FN (ataque no detectado) es más costoso que el FP (falsa alarma).
+You cannot maximize both metrics at the same time with the same model. If you lower the threshold to detect more attacks (↑ Recall), you inevitably classify more normal traffic as an attack (↓ Precision). If you raise the threshold to reduce false alarms (↑ Precision), you let more attacks pass (↓ Recall). The Precision-Recall curve visualizes this trade-off across all possible thresholds. The optimal threshold is chosen based on which error has a higher cost — in security, the FN (undetected attack) is more costly than the FP (false alarm).
 
 **ROC-AUC**
-Área bajo la curva ROC (Receiver Operating Characteristic). Mide la capacidad del modelo de **separar clases en todos los thresholds posibles** — no en un threshold específico. Valor entre 0.5 (aleatorio, sin capacidad de separación) y 1.0 (separación perfecta).
+Area Under the Receiver Operating Characteristic curve. Measures the model's ability to **separate classes across all possible thresholds** — not at a specific threshold. Value between 0.5 (random, no separation capability) and 1.0 (perfect separation).
 
-La ventaja frente a Recall o Precision es que es independiente del threshold: dos modelos pueden tener el mismo ROC-AUC y muy distintos Recall/Precision si usan thresholds diferentes.
+The advantage over Recall or Precision is that it is threshold-independent: two models can have the same ROC-AUC and very different Recall/Precision if they use different thresholds.
 
-Referencia de interpretación para este proyecto:
+Interpretation reference for this project:
 
-| Valor | Interpretación |
+| Value | Interpretation |
 |---|---|
-| 0.5 | Aleatorio — el modelo no aprende nada |
-| 0.77 | Débil — Logistic Regression en CSIC 2010. No puede separar las clases con estas features |
-| 0.93–0.94 | Baseline — RF/XGBoost/LightGBM con 15 features (v1) |
-| 0.95–0.955 | v2/v3 — los mismos modelos con 17-19 features. Techo que se mantuvo hasta v3 |
-| 0.966 | v4 — LightGBM con 22 features. Primer modelo en romper el plateau |
-| 1.0 | Perfecto — no realista en la práctica |
+| 0.5 | Random — the model learns nothing |
+| 0.77 | Weak — Logistic Regression in CSIC 2010. Cannot separate classes with these features |
+| 0.93–0.94 | Baseline — RF/XGBoost/LightGBM with 15 features (v1) |
+| 0.95–0.955 | v2/v3 — same models with 17-19 features. Ceiling that held until v3 |
+| 0.966 | v4 — LightGBM with 22 features. First model to break the plateau |
+| 1.0 | Perfect — unrealistic in practice |
 
-Un modelo con ROC-AUC 0.777 (Logistic Regression) tiene capacidad de separación muy limitada — aunque su Recall sea 0.977, lo logra clasificando casi todo como ataque (Precision 0.417). El ROC-AUC bajo delata que no distingue bien, solo baja el threshold al mínimo. Ver también: *Decision threshold*.
+A model with ROC-AUC 0.777 (Logistic Regression) has very limited separation capacity — even if its Recall is 0.977, it achieves it by classifying almost everything as an attack (Precision 0.417). The low ROC-AUC reveals that it does not distinguish well, it just lowers the threshold to the minimum. See also: *Decision threshold*.
 
 **Run (MLflow)**
-Una ejecución individual de entrenamiento, identificada por un UUID único (run ID). Contiene: parámetros loggeados (`mlflow.log_param`), métricas (`mlflow.log_metric`), artefactos como plots y el modelo serializado (`mlflow.log_artifact`), y metadata de sistema (duración, estado, fecha). Los runs se agrupan dentro de un Experiment. Naming convention en este proyecto: `model-a-{algoritmo}-features-{versión}` (ej: `model-a-rf-features-v3`).
+An individual training execution, identified by a unique UUID (run ID). Contains: logged parameters (`mlflow.log_param`), metrics (`mlflow.log_metric`), artifacts like plots and the serialized model (`mlflow.log_artifact`), and system metadata (duration, status, date). Runs are grouped within an Experiment. Naming convention in this project: `model-a-{algorithm}-features-{version}` (e.g. `model-a-rf-features-v3`).
 
 ---
 
 ## S
 
-**Subpoblación (subpopulation analysis)**
-Técnica de análisis que evalúa una feature o un modelo exclusivamente dentro de un subconjunto relevante del dataset, en lugar de sobre toda la población. Evita el "ruido de dilución" que ocurre cuando se calcula correlación en toda la muestra incluyendo casos donde la feature no tiene significado. Ejemplo clave en este proyecto: `content_pct_density` se analiza solo en los 17.580 requests POST (donde el body tiene significado real), no en los 36.000 totales (donde los GETs tienen content vacío). La correlación en POSTs es 0.406 vs 0.279 en la población completa — la señal es mucho más clara cuando se filtra el ruido estructural. Esta técnica también se aplica al análisis de FP: separar qué proporción son GETs (62.2%) vs POSTs (37.8%) define el techo teórico de cualquier feature de content.
+**Subpopulation (subpopulation analysis)**
+Analysis technique that evaluates a feature or a model exclusively within a relevant subset of the dataset, rather than on the entire population. Avoids the "dilution noise" that occurs when correlation is calculated over the entire sample including cases where the feature has no meaning. Key example in this project: `content_pct_density` is analyzed only on the 17,580 POST requests (where the body has real meaning), not on the total 36,000 (where GETs have empty content). The correlation on POSTs is 0.406 vs 0.279 on the full population — the signal is much clearer when structural noise is filtered out. This technique is also applied to FP analysis: separating what proportion are GETs (62.2%) vs POSTs (37.8%) defines the theoretical ceiling of any content feature.
 
-**Skewed distribution (distribución sesgada)**
-Distribución asimétrica donde la mayoría de los valores están concentrados en un extremo con una cola larga hacia el otro lado. En UNSW-NB15, features como `sbytes`, `sload` y `dur` son altamente skewed a la derecha — la mayoría de conexiones tienen valores bajos pero algunas tienen valores extremadamente altos. Requiere RobustScaler o transformación logarítmica antes de usarlas en modelos lineales.
+**Skewed distribution**
+Asymmetrical distribution where most values are concentrated at one end with a long tail towards the other side. In UNSW-NB15, features like `sbytes`, `sload` and `dur` are highly right-skewed — most connections have low values but some have extremely high values. Requires RobustScaler or logarithmic transformation before using them in linear models.
 
 **Sparse feature**
-Feature que tiene valor 0 (o nulo) para la gran mayoría de los registros y solo activa en casos específicos. En UNSW-NB15: `is_ftp_login`, `trans_depth`, `tcprtt` tienen mediana=0 y P75=0 — solo son relevantes para conexiones FTP o TCP específicas. Son útiles igual: cuando activan, suelen ser muy discriminativas.
+Feature that has a value of 0 (or null) for the vast majority of records and only activates in specific cases. In UNSW-NB15: `is_ftp_login`, `trans_depth`, `tcprtt` have median=0 and P75=0 — they are only relevant for FTP or specific TCP connections. They are still useful: when they trigger, they are usually very discriminative.
+
+**Spearman correlation**
+Measure of monotonic correlation between two variables — does not assume a linear relationship, just that when one variable goes up, the other tends to consistently go up (or down). Unlike Pearson (linear), Spearman captures non-linear monotonic relationships.
+
+Value between -1 and 1:
+- **+1:** perfectly monotonic positive relationship (when X goes up, Y always goes up)
+- **-1:** perfectly monotonic negative relationship (when X goes up, Y always goes down)
+- **0:** no monotonic relationship
+
+**Used in this project:** to detect redundancy between features. If Spearman ρ > 0.7 between two features, they share information and one can probably be discarded.
+
+**Example in Model A:**
+- `url_param_count` ↔ `url_query_length`: ρ = 0.9955 → almost identical
+- `method_is_get` ↔ `method_is_post`: ρ = -0.984 → one is the negation of the other
+
+See also: *Mutual Information*, *Feature redundancy*.
+
+**scale_pos_weight**
+LightGBM and XGBoost hyperparameter that adjusts the weight of the positive class (attacks) during training. Formula: `neg / pos` — number of negatives divided by number of positives.
+
+```python
+neg, pos = (y_train == 0).sum(), (y_train == 1).sum()
+scale_pos_weight = neg / pos  # ~1.44 in CSIC 2010 (36120 / 25047)
+```
+
+**How it affects training:** the tree prioritizes errors in the positive class more. If an attack is misclassified, the weighted error is greater than a misclassified normal.
+
+**Effect on probabilities:** `scale_pos_weight` distorts the predicted probabilities. A request with prob=0.30 with `scale_pos_weight=1.44` does not mean "30% chance of being an attack" — it means "the model thinks this is more likely normal than the base rate would suggest". Absolute probabilities are not reliable, but the binary prediction (0/1 via threshold) is.
+
+**In production (~1% attacks):** `scale_pos_weight=1.44` calibrated with 41% attacks produces skewed probabilities. A 0.30 threshold calibrated on the dataset may not be optimal in production. See also: *Distribution shift*, *Test set 99:1*, *Decision threshold*.
 
 **StandardScaler**
-Normalizador que transforma cada feature para tener media=0 y desviación estándar=1. Fórmula: `(x - media) / std`.
+Normalizer that transforms each feature to have mean=0 and standard deviation=1. Formula: `(x - mean) / std`.
 
-Se usa cuando features numéricas continuas conviven con features binarias (0/1). Sin escalar, un modelo lineal le daría más peso a las continuas simplemente por tener valores más grandes — no porque sean más importantes. Ejemplo en CSIC 2010: `url_length` va de 0 a 400, `url_has_pct27` solo vale 0 o 1. StandardScaler lleva `url_length` al mismo rango de magnitud que las binarias.
+It is used when continuous numerical features coexist with binary (0/1) features. Without scaling, a linear model would give more weight to continuous ones simply because they have larger values — not because they are more important. Example in CSIC 2010: `url_length` goes from 0 to 400, `url_has_pct27` is only 0 or 1. StandardScaler brings `url_length` to the same magnitude range as the binaries.
 
-**Regla crítica:** el `fit` (aprendizaje de media y std) se hace **solo sobre el train set**. Luego se aplica `transform` con esos mismos números a val y test. Si se hiciera `fit` en val o test, el scaler usaría información de datos que el modelo no debería haber visto — data leakage.
+**Critical rule:** `fit` (learning mean and std) is done **only on the train set**. Then `transform` is applied with those same numbers to val and test. If `fit` were done on val or test, the scaler would use information from data the model should not have seen — data leakage.
 
-**Cuándo NO usarlo:** features con outliers extremos como `sbytes` o `sload` en UNSW-NB15 — un valor máximo de 12M distorsiona la media y hace que el scaler sea inútil. En esos casos usar `RobustScaler` (usa mediana e IQR en lugar de media y std). Ver también: *RobustScaler*, *Data leakage*, *fit / fit_transform / transform*.
+**When NOT to use it:** features with extreme outliers like `sbytes` or `sload` in UNSW-NB15 — a max value of 12M distorts the mean and makes the scaler useless. In those cases use `RobustScaler` (uses median and IQR instead of mean and std). See also: *RobustScaler*, *Data leakage*, *fit / fit_transform / transform*.
 
 **class_weight='balanced'**
-Parámetro de scikit-learn que ajusta automáticamente los pesos de cada clase inversamente proporcional a su frecuencia. Penaliza más los errores en la clase minoritaria. Alternativa más simple que SMOTE para desbalances leves. En CSIC 2010 (59/41) es la estrategia elegida.
+scikit-learn parameter that automatically adjusts the weights of each class inversely proportional to their frequency. Penalizes minority class errors more. Simpler alternative to SMOTE for mild imbalances. In CSIC 2010 (59/41) it is the chosen strategy.
 
 **SMOTE (Synthetic Minority Oversampling Technique)**
-Técnica para balancear clases cuando el desbalance es moderado-alto (ej: 70/30 o peor). Genera ejemplos **sintéticos** de la clase minoritaria interpolando entre ejemplos reales existentes — no duplica, crea nuevos puntos en el espacio de features.
+Technique to balance classes when the imbalance is moderate-high (e.g. 70/30 or worse). Generates **synthetic** examples of the minority class interpolating between existing real examples — it does not duplicate, it creates new points in the feature space.
 
-**Cuándo usarlo:** cuando `class_weight='balanced'` no alcanza, típicamente con desbalances mayores al 65/35.
+**When to use it:** when `class_weight='balanced'` is not enough, typically with imbalances greater than 65/35.
 
-**Regla crítica:** SMOTE **solo se aplica al training set**, nunca al val ni al test. Aplicarlo en val/test contaminaría la evaluación con datos artificiales y daría métricas irreales.
+**Critical rule:** SMOTE **is only applied to the training set**, never to val or test. Applying it to val/test would contaminate the evaluation with artificial data and yield unreal metrics.
 
-**Por qué se usa en ML de seguridad:** los ataques suelen ser minoría en tráfico real. Si el modelo ve 95% de ejemplos normales, aprende a predecir "normal" siempre y logra 95% de accuracy sin detectar nada. SMOTE balancea el training para que el modelo aprenda ambas clases correctamente.
+**Why it is used in security ML:** attacks are usually the minority in real traffic. If the model sees 95% normal examples, it learns to always predict "normal" and achieves 95% accuracy without detecting anything. SMOTE balances the training so the model learns both classes correctly.
 
-**Split train/test**
-División del dataset en dos subsets con roles distintos:
+**Train/test split**
+Division of the dataset into two subsets with different roles:
 
-- **Train set:** datos con los que el modelo **aprende**. Ve los ejemplos, ajusta sus parámetros internos, aprende los patrones.
-- **Validation set (val):** datos que el modelo **no vio durante el training**. Se usa para ajustar hiperparámetros y tomar decisiones de diseño (qué modelo usar, qué threshold aplicar).
-- **Test set:** datos que el modelo **nunca vio**. Solo se usa al final para reportar las métricas reales del MVP. Si se usa antes, las métricas quedan sesgadas.
+- **Train set:** data with which the model **learns**. It sees the examples, adjusts its internal parameters, learns the patterns.
+- **Validation set (val):** data that the model **did not see during training**. Used to adjust hyperparameters and make design decisions (what model to use, what threshold to apply).
+- **Test set:** data that the model **never saw**. Only used at the end to report the MVP's real metrics. If used before, metrics become biased.
 
-En este proyecto el split es **70% train / 15% val / 15% test**, estratificado (preserva la proporción de clases en cada subset). UNSW-NB15 tiene un split predefinido en los archivos parquet — se respeta ese split oficial.
+In this project the split is **70% train / 15% val / 15% test**, stratified (preserves class proportion in each subset). UNSW-NB15 has a predefined split in the parquet files — that official split is respected.
 
-**Por qué separar:** si evaluás el modelo con los mismos datos con los que entrenó, va a parecer perfecto aunque no generalice. El test set simula datos del mundo real que el modelo nunca vio.
+**Why separate:** if you evaluate the model with the same data it trained with, it will seem perfect even if it doesn't generalize. The test set simulates real-world data the model never saw.
 
 **Stratified split**
-División del dataset que preserva la proporción de clases en cada subset (train/val/test). Necesario con clases desbalanceadas. Sin estratificación, un subset podría quedar con casi todos los ataques y otro con casi ninguno, haciendo la evaluación poco representativa.
+Division of the dataset that preserves the class proportion in each subset (train/val/test). Necessary with imbalanced classes. Without stratification, one subset could end up with almost all attacks and another with almost none, making the evaluation unrepresentative.
 
 ---
 
 ## T
+
+**Test set 99:1 (real distribution test)**
+Test performed to evaluate how the model behaves in conditions that simulate real production, where the attack ratio is ~1% (99 normal : 1 attack) instead of the training dataset's 41%.
+
+**Why it's done:** the CSIC 2010 dataset has 41% attacks — very different from real production where attacks are rare (~1%). The threshold calibrated on the dataset (0.3002) skews predictions differently in each distribution.
+
+**How it is built:**
+1. Take the original test set (9160 samples, 41% attacks)
+2. Resample keeping all attacks and a sample of normals to reach a 99:1 ratio
+3. On this resampled set, evaluate the model with the dataset threshold
+
+**Test results in Model A (2026-04-20):**
+
+| Metric | Dataset (41%) | 99:1 (~1%) | Comment |
+|---|---|---|---|
+| Threshold used | 0.3002 | 0.3002 | The same |
+| Recall | 95.43% | 100.00% | Goes up — model is more "confident" in attacks |
+| Precision | 79.29% | 5.48% | Drops — many FPs when attacks are rare |
+| FP rate | 17.35% | 17.41% | Similar in proportion |
+| FP (absolute) | 937 | 931 | Similar |
+
+**Interpretation:** with a 0.3002 threshold, the model detects all attacks (Recall 100%) but generates many false alarms. For every 100 normal requests in production, ~17 are incorrectly classified as an attack.
+
+**Corrected threshold for production:** 0.4723 (+0.1721 vs dataset)
+- Recall: 96.30% ✅ (≥ 95%)
+- Precision: 7.51%
+- FP rate: 12.66%
+
+The threshold goes up to be more conservative — it only classifies as an attack when the model is more certain. Even so, Precision is low because the model's features are easily confused with normal traffic that has long URLs/bodies.
+
+**Decision criterion:**
+- If FP rate < 5% with corrected threshold → the model is robust for production
+- If FP rate > 5% → reconsider model or features
+
+See also: *Distribution shift*, *Decision threshold*, *False Positive rate*, *scale_pos_weight*.
 
 **True Positive (TP)**
-El modelo predijo *attack* y era realmente un ataque. Detección correcta.
+The model predicted *attack* and it was truly an attack. Correct detection.
 
 **True Negative (TN)**
-El modelo predijo *benign* y era realmente tráfico legítimo. Clasificación correcta de la clase negativa.
-
----
-
-## T
+The model predicted *benign* and it was truly legitimate traffic. Correct classification of the negative class.
 
 **Tracking URI (MLflow)**
-URI que MLflow usa para encontrar el backend store donde persiste los runs. Se configura con `mlflow.set_tracking_uri(uri)` antes de iniciar cualquier run. Para SQLite con path absoluto, el formato es `sqlite:////ruta/absoluta/al/archivo.db` (4 barras). Una trampa común: SQLAlchemy no URL-decodea `%20`, por lo que rutas con espacios deben pasarse literales — `sqlite:////Users/foo/PMT MLSec/mlflow.db` funciona, `sqlite:////Users/foo/PMT%20MLSec/mlflow.db` crea un directorio con nombre literal `PMT%20MLSec`. En este proyecto la URI se construye con `"sqlite:////" + str(PROJECT_ROOT / 'mlflow.db').lstrip("/")`.
+URI that MLflow uses to find the backend store where it persists runs. Configured with `mlflow.set_tracking_uri(uri)` before starting any run. For SQLite with absolute path, the format is `sqlite:////absolute/path/to/file.db` (4 slashes). Common pitfall: SQLAlchemy does not URL-decode `%20`, so paths with spaces must be passed literal — `sqlite:////Users/foo/PMT MLSec/mlflow.db` works, `sqlite:////Users/foo/PMT%20MLSec/mlflow.db` creates a directory with literal name `PMT%20MLSec`. In this project the URI is built with `"sqlite:////" + str(PROJECT_ROOT / 'mlflow.db').lstrip("/")`.
 
-**Trade-off Precision/Recall** → ver *Precision vs Recall — trade-off*.
+**Trade-off Precision/Recall** → see *Precision vs Recall — trade-off*.
 
-**Training (entrenamiento)**
-Proceso donde el modelo ajusta sus parámetros internos a partir de los ejemplos del training set. El modelo "ve" cada ejemplo, calcula el error entre su predicción y el label real, y ajusta los parámetros para reducir ese error. Al terminar, los parámetros quedan fijos — el modelo está listo para predecir sobre datos nuevos. **El modelo nunca debe ver el val o test set durante el training.**
+**Training**
+Process where the model adjusts its internal parameters based on the examples from the training set. The model "sees" each example, calculates the error between its prediction and the real label, and adjusts the parameters to reduce that error. Once finished, parameters are fixed — the model is ready to predict on new data. **The model must never see the val or test set during training.**
 
-**Hyperparameter (hiperparámetro)**
-Parámetro de configuración del modelo que se fija **antes** del training — no se aprende de los datos. Ejemplos: `n_estimators=200` en Random Forest (cuántos árboles construir), `max_iter=1000` en Logistic Regression (cuántas iteraciones de optimización), `class_weight='balanced'` (cómo ponderar las clases). Se optimizan probando distintos valores y midiendo performance en el validation set.
+**Hyperparameter**
+Model configuration parameter that is set **before** training — not learned from data. Examples: `n_estimators=200` in Random Forest (how many trees to build), `max_iter=1000` in Logistic Regression (how many optimization iterations), `class_weight='balanced'` (how to weight classes). Optimized by trying different values and measuring performance on the validation set.
 
 **TCP window size (swin / dwin)**
-Campo del header TCP que indica cuántos bytes puede recibir el receptor antes de que el emisor deba esperar un ACK. Rango: 0–255 en este dataset (en escala reducida). Un window size alto indica una conexión establecida y activa con flujo de datos — típico de tráfico legítimo. Los ataques de tipo scan o probe suelen tener `swin`/`dwin` = 0 porque nunca completan el handshake TCP. En UNSW-NB15: `swin` tiene correlación -0.334 con el label — mayor window = más probable tráfico normal.
+TCP header field indicating how many bytes the receiver can accept before the sender must wait for an ACK. Range: 0–255 in this dataset (on reduced scale). A high window size indicates an established and active connection with data flow — typical of legitimate traffic. Scan or probe attacks often have `swin`/`dwin` = 0 because they never complete the TCP handshake. In UNSW-NB15: `swin` has a -0.334 correlation with the label — higher window = more likely normal traffic.
 
 **TCP sequence number (stcpb / dtcpb)**
-Número de secuencia inicial del segmento TCP (ISN — Initial Sequence Number). Por diseño del protocolo, es un número pseudoaleatorio entre 0 y 2^32 (~4.29B). En UNSW-NB15: `stcpb` muestra correlación -0.255 con el label — inesperado para un valor que debería ser aleatorio. Puede reflejar un patrón en cómo el dataset fue generado. Se mantiene en el modelo inicial y se evalúa con feature importance post-training.
+Initial sequence number of the TCP segment (ISN — Initial Sequence Number). By protocol design, it is a pseudorandom number between 0 and 2^32 (~4.29B). In UNSW-NB15: `stcpb` shows a -0.255 correlation with the label — unexpected for a value that should be random. May reflect a pattern in how the dataset was generated. It is kept in the initial model and evaluated with post-training feature importance.
 
 ---
 
 ## X
 
 **XGBoost (Extreme Gradient Boosting)**
-Modelo de ensemble que construye árboles de decisión de forma **secuencial** — cada árbol aprende de los errores del anterior. A diferencia de Random Forest (árboles en paralelo independientes), XGBoost construye árboles que se corrigen mutuamente. Es uno de los modelos más usados en competencias de ML y datasets tabulares. Requiere `libomp` en macOS para funcionar. Hiperparámetro clave: `scale_pos_weight` para manejar desbalance de clases.
+Ensemble model that builds decision trees **sequentially** — each tree learns from the errors of the previous one. Unlike Random Forest (independent parallel trees), XGBoost builds trees that correct each other. It is one of the most used models in ML competitions and tabular datasets. Requires `libomp` on macOS to work. Key hyperparameter: `scale_pos_weight` to handle class imbalance.
 
-Usado en: **Modelo A (CSIC 2010)**. Resultado: ROC-AUC 0.933, Recall 0.964 ✅, Precision 0.594 ❌ — mayor Recall pero más FP que Random Forest.
-Pendiente en: **Modelo B (UNSW-NB15)** — todavía no entrenado.
+Used in: **Model A (CSIC 2010)**. Result: ROC-AUC 0.933, Recall 0.964 ✅, Precision 0.594 ❌ — higher Recall but more FPs than Random Forest.
+Pending in: **Model B (UNSW-NB15)** — not yet trained.
 
 ---
 
 ## U
 
 **UNSW-NB15**
-Dataset de tráfico de red generado por la University of New South Wales. Contiene 36 columnas (33 features + `attack_cat` + `label` + índice) con 9 categorías de ataque. Split predefinido: 175.341 train / 82.332 test. Usado para entrenar el Modelo B.
+Network traffic dataset generated by the University of New South Wales. Contains 36 columns (33 features + `attack_cat` + `label` + index) with 9 attack categories. Predefined split: 175,341 train / 82,332 test. Used to train Model B.
 
 **Network flow features**
-Métricas derivadas de una conexión de red capturada como flujo (flow). En lugar de inspeccionar el contenido de cada paquete, se analizan estadísticas del flujo completo: duración (`dur`), bytes enviados/recibidos (`sbytes`/`dbytes`), tasa de paquetes (`rate`), carga (`sload`/`dload`), jitter (`sjit`/`djit`), etc. Permiten detectar ataques sin necesidad de descifrar tráfico encriptado — solo se necesita la metadata de la conexión.
+Metrics derived from a network connection captured as a flow. Instead of inspecting each packet's content, statistics of the complete flow are analyzed: duration (`dur`), bytes sent/received (`sbytes`/`dbytes`), packet rate (`rate`), load (`sload`/`dload`), jitter (`sjit`/`djit`), etc. They allow detecting attacks without needing to decrypt encrypted traffic — only connection metadata is needed.

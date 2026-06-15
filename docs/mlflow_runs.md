@@ -1,143 +1,143 @@
-# Cómo leer un run de MLflow
+# How to read an MLflow run
 
-Esta guía explica cómo interpretar la información de un run en el experimento `mlsec-model-a`. Está pensada para alguien con background técnico que necesita entender qué mira y qué decide a partir de los datos de MLflow.
+This guide explains how to interpret run information in the `mlsec-model-a` experiment. It is designed for someone with a technical background who needs to understand what they are looking at and what to decide based on MLflow data.
 
 ---
 
-## Contexto rápido
+## Quick context
 
-Cada vez que se entrena un modelo en este proyecto, MLflow registra un **run**: una snapshot completa de ese entrenamiento. Un run contiene:
+Every time a model is trained in this project, MLflow logs a **run**: a complete snapshot of that training. A run contains:
 
-- Los **parámetros** con los que se entrenó (algoritmo, versión de features, etc.)
-- Las **métricas** de evaluación (ROC-AUC, Recall, Precision, etc.)
-- Los **artefactos** generados (plots, modelo serializado)
-- Metadata de sistema (cuándo se ejecutó, cuánto tardó, desde qué notebook)
+- The **parameters** it was trained with (algorithm, features version, etc.)
+- The evaluation **metrics** (ROC-AUC, Recall, Precision, etc.)
+- The generated **artifacts** (plots, serialized model)
+- System metadata (when it ran, how long it took, from which notebook)
 
-El experimento `mlsec-model-a` agrupa todos los runs del Modelo A (CSIC 2010). Para verlos:
+The `mlsec-model-a` experiment groups all Model A (CSIC 2010) runs. To view them:
 
 ```bash
-# Desde la raíz del proyecto
+# From the project root
 mlflow ui --backend-store-uri "sqlite:///mlflow.db"
-# → http://localhost:5000 → clic en "mlsec-model-a"
+# → http://localhost:5000 → click on "mlsec-model-a"
 ```
 
 ---
 
-## Anatomía de un run
+## Anatomy of a run
 
-### Panel izquierdo — "About this run"
+### Left panel — "About this run"
 
-| Campo | Qué es | Cómo usarlo |
+| Field | What it is | How to use it |
 |---|---|---|
-| **Run ID** | UUID único del run (ej: `70c07c5d...`) | Para referenciar el run en código: `mlflow.load_model(f"runs:/{run_id}/model")` |
-| **Created at** | Timestamp de ejecución | Para saber cuándo se hizo y ordenar cronológicamente |
-| **Status** | `Finished` / `Failed` / `Running` | Un run `Failed` no tiene métricas confiables — ignorar |
-| **Duration** | Tiempo de ejecución del run | Referencia para planificar re-entrenamientos |
-| **Source** | Notebook o script que lo generó | Para reproducir exactamente: abrí ese notebook y re-ejecutá |
-| **Experiment ID** | ID del experimento padre | Agrupa todos los runs del mismo modelo |
+| **Run ID** | Unique UUID of the run (e.g., `70c07c5d...`) | To reference the run in code: `mlflow.load_model(f"runs:/{run_id}/model")` |
+| **Created at** | Execution timestamp | To know when it was done and sort chronologically |
+| **Status** | `Finished` / `Failed` / `Running` | A `Failed` run has unreliable metrics — ignore it |
+| **Duration** | Run execution time | Reference for planning re-trainings |
+| **Source** | Notebook or script that generated it | To reproduce exactly: open that notebook and re-run |
+| **Experiment ID** | Parent experiment ID | Groups all runs of the same model |
 
-### Pestaña Overview — Métricas
+### Overview tab — Metrics
 
-Las 8 métricas loggeadas en cada run:
+The 8 metrics logged in each run:
 
-| Métrica | Qué mide | Criterio MVP | Cómo leerla |
+| Metric | What it measures | MVP Criterion | How to read it |
 |---|---|---|---|
-| `roc_auc` | Capacidad del modelo de separar clases en **todos los thresholds**. 0.5 = aleatorio, 1.0 = perfecto | — | Indica el techo de calidad del modelo. Dos modelos con el mismo ROC-AUC tienen la misma capacidad teórica de separar clases, aunque el threshold óptimo varíe |
-| `recall` | De todos los ataques reales, ¿cuántos detectó? | **≥ 0.95** | El número crítico de seguridad. 0.952 = detecta 95.2% de los ataques reales — el 4.8% restante pasa sin alarma |
-| `precision` | De todas las alarmas que disparó, ¿cuántas eran ataques reales? | **≥ 0.85** | Mide el ruido de falsas alarmas. 0.713 = de cada 10 alarmas, 7.13 son ataques reales y 2.87 son tráfico normal mal clasificado |
-| `f1` | Media armónica de Precision y Recall | — | Resumen en un número cuando no hay prioridad entre las dos métricas. En seguridad usamos Recall y Precision por separado porque sus criterios son distintos |
-| `fp` | Cantidad absoluta de Falsos Positivos | — | Traduce Precision a algo concreto: 1444 FP = 1444 requests legítimos que el modelo marcaría como ataque por día (si el volumen es similar) |
-| `fn` | Cantidad absoluta de Falsos Negativos | — | Traduce Recall a algo concreto: 179 FN = 179 ataques reales que pasarían sin detectar |
-| `tp` | Verdaderos Positivos (ataques detectados correctamente) | — | Junto con FN: `Recall = TP / (TP + FN)` |
-| `tn` | Verdaderos Negativos (tráfico normal clasificado correctamente) | — | Junto con FP: `Precision = TP / (TP + FP)` |
+| `roc_auc` | Model's ability to separate classes across **all thresholds**. 0.5 = random, 1.0 = perfect | — | Indicates the theoretical quality ceiling. Two models with the same ROC-AUC have the same theoretical separation capacity, even if optimal thresholds vary |
+| `recall` | Of all real attacks, how many did it detect? | **≥ 0.95** | The critical security number. 0.952 = detects 95.2% of real attacks — the remaining 4.8% slip through |
+| `precision` | Of all triggered alarms, how many were real attacks? | **≥ 0.85** | Measures false alarm noise. 0.713 = out of 10 alarms, 7.13 are real attacks and 2.87 are misclassified normal traffic |
+| `f1` | Harmonic mean of Precision and Recall | — | Single number summary when there's no priority between the two metrics. In security we use Recall and Precision separately because their criteria differ |
+| `fp` | Absolute False Positive count | — | Translates Precision to concrete terms: 1444 FP = 1444 legitimate requests flagged as attacks per day |
+| `fn` | Absolute False Negative count | — | Translates Recall to concrete terms: 179 FN = 179 real attacks that slip through undetected |
+| `tp` | True Positives (correctly detected attacks) | — | With FN: `Recall = TP / (TP + FN)` |
+| `tn` | True Negatives (correctly classified normal traffic) | — | With FP: `Precision = TP / (TP + FP)` |
 
-!!! tip "Cómo decidir si un run es bueno"
-    Los criterios del MVP son **Recall ≥ 0.95** y **Precision ≥ 0.85**. Revisá esas dos métricas primero. Si un run no cumple Recall ≥ 0.95, está descartado — no importa cuánto mejore la Precision. Si cumple Recall pero no Precision, hay trabajo de features por hacer.
+!!! tip "How to decide if a run is good"
+    The MVP criteria are **Recall ≥ 0.95** and **Precision ≥ 0.85**. Check those two metrics first. If a run doesn't meet Recall ≥ 0.95, it's discarded — no matter how much Precision improves. If it meets Recall but not Precision, there is feature work to be done.
 
-### Pestaña Overview — Parámetros
+### Overview tab — Parameters
 
-Los 10 parámetros loggeados documentan exactamente cómo se entrenó el run:
+The 10 logged parameters document exactly how the run was trained:
 
-| Parámetro | Qué documenta |
+| Parameter | What it documents |
 |---|---|
-| `model_type` | Algoritmo usado (ej: `LightGBM`) |
-| `dataset` | Dataset de origen (`csic2010` o `unsw_nb15`) |
-| `features_version` | Versión del preprocessing (`v1`, `v2`, `v3`...) — indica qué features tiene disponibles |
-| `n_features` | Cantidad de features que recibió el modelo |
-| `random_state` | Semilla de aleatoriedad — para reproducir exactamente el mismo split y modelo |
-| `threshold` | Valor de decisión optimizado en validación — el score a partir del cual el modelo clasifica como "ataque" |
-| `min_recall_threshold` | El Recall mínimo que se usó para calcular el threshold óptimo |
-| `split` | División train/val/test usada |
-| `class_weight` | Si se usó balanceo de clases |
-| `scale_pos_weight` | Factor de escala para clases positivas (solo XGBoost/LightGBM) |
+| `model_type` | Algorithm used (e.g., `LightGBM`) |
+| `dataset` | Source dataset (`csic2010` or `unsw_nb15`) |
+| `features_version` | Preprocessing version (`v1`, `v2`, `v3`...) — indicates which features were available |
+| `n_features` | Number of features the model received |
+| `random_state` | Random seed — to reproduce the exact same split and model |
+| `threshold` | Decision value optimized in validation — the score from which the model classifies as "attack" |
+| `min_recall_threshold` | The minimum Recall used to calculate the optimal threshold |
+| `split` | Train/val/test split used |
+| `class_weight` | Whether class balancing was used |
+| `scale_pos_weight` | Scaling factor for positive classes (XGBoost/LightGBM only) |
 
-!!! info "Por qué importa el `threshold`"
-    El modelo no predice "ataque" o "normal" directamente — predice una probabilidad entre 0 y 1. El threshold es el corte: si la probabilidad ≥ threshold → ataque. En v3 los thresholds son mucho menores que 0.5 (ej: 0.15 para RF) porque el dataset está desbalanceado. Si se usara 0.5, el Recall caería significativamente. El threshold loggeado en MLflow es el que da Recall ≥ 0.95 sobre validación.
+!!! info "Why `threshold` matters"
+    The model doesn't predict "attack" or "normal" directly — it predicts a probability between 0 and 1. The threshold is the cutoff: if probability ≥ threshold → attack. In v3, thresholds are much lower than 0.5 (e.g., 0.15 for RF) because the dataset is imbalanced. If 0.5 were used, Recall would drop significantly. The threshold logged in MLflow is the one that yields Recall ≥ 0.95 on validation.
 
-### Pestaña Artifacts
+### Artifacts tab
 
-Los artefactos son archivos generados durante el run. Para el experimento `mlsec-model-a`:
+Artifacts are files generated during the run. For the `mlsec-model-a` experiment:
 
-| Artefacto | Qué contiene | Para qué usarlo |
+| Artifact | What it contains | What to use it for |
 |---|---|---|
-| `confusion_matrix.png` | Tabla TP/FP/TN/FN visualizada | Revisar la distribución de errores de un vistazo |
-| `feature_importance.png` | Ranking de features por contribución al modelo | Decidir qué features explorar en la próxima iteración |
-| `model/` | El modelo serializado (pickle + metadata MLflow) | Cargar el modelo para inferencia: `mlflow.sklearn.load_model(f"runs:/{run_id}/model")` |
+| `confusion_matrix.png` | Visualized TP/FP/TN/FN table | Review error distribution at a glance |
+| `feature_importance.png` | Feature ranking by model contribution | Decide which features to explore in the next iteration |
+| `model/` | Serialized model (pickle + MLflow metadata) | Load the model for inference: `mlflow.sklearn.load_model(f"runs:/{run_id}/model")` |
 
-Para ver los artefactos: clic en la pestaña **Artifacts** → navegar el árbol de archivos → clic en la imagen para preview en el browser.
+To view artifacts: click on the **Artifacts** tab → navigate the file tree → click the image for a browser preview.
 
 ### Logged models
 
-Al final del panel Overview aparece la sección "Logged models". Muestra el modelo registrado en el run con su estado:
+At the bottom of the Overview panel is the "Logged models" section. It shows the model registered in the run with its state:
 
-| Estado | Significado |
+| State | Meaning |
 |---|---|
-| `Ready` | El modelo está disponible para cargar e inferir |
-| (sin estado) | El modelo se loggeó pero no se registró en el Model Registry |
+| `Ready` | The model is available for loading and inference |
+| (no state) | The model was logged but not registered in the Model Registry |
 
-La columna `roc_auc` en esta sección es el ROC-AUC del modelo en el momento del log — útil como referencia rápida sin abrir las métricas completas.
+The `roc_auc` column in this section is the ROC-AUC of the model at the time of logging — useful as a quick reference without opening the full metrics.
 
 ---
 
-## Cómo comparar runs
+## How to compare runs
 
-La tabla del experimento `mlsec-model-a` muestra todos los runs juntos. Para tomar decisiones:
+The `mlsec-model-a` experiment table shows all runs together. To make decisions:
 
-1. **Ir a http://localhost:5000** → clic en `mlsec-model-a`
-2. **Seleccionar los runs a comparar** (checkbox a la izquierda)
-3. **Clic en "Compare"** → vista paralela de métricas y parámetros
+1. **Go to http://localhost:5000** → click `mlsec-model-a`
+2. **Select the runs to compare** (checkbox on the left)
+3. **Click "Compare"** → parallel view of metrics and parameters
 
-La columna `features_version` en los parámetros permite agrupar mentalmente los runs por iteración:
+The `features_version` column in parameters lets you mentally group runs by iteration:
 
-| features_version | Runs | Qué cambió |
+| features_version | Runs | What changed |
 |---|---|---|
 | v3 | `model-a-lgbm-features-v3`, `model-a-rf-features-v3`, `model-a-xgboost-features-v3`, `model-a-logreg-features-v3` | + `content_pct_density` vs v2 |
 
-!!! tip "Lectura rápida de la tabla"
-    Ordená la tabla por `precision` (clic en la columna). Los runs con mejor Precision aparecen arriba. Si además tienen `recall` ≥ 0.95, son candidatos a analizar en detalle. Si no hay ninguno con ambas métricas cumplidas, el trabajo está en las features.
+!!! tip "Quick table reading"
+    Sort the table by `precision` (click the column header). Runs with the best Precision appear at the top. If they also have `recall` ≥ 0.95, they are candidates for detailed analysis. If none meet both metrics, the work remains in the features.
 
 ---
 
-## Estado actual — runs en mlsec-model-a
+## Current status — mlsec-model-a runs
 
-| Run name | Algoritmo | features_version | ROC-AUC | Recall | Precision | FP | Estado |
+| Run name | Algorithm | features_version | ROC-AUC | Recall | Precision | FP | Status |
 |---|---|---|---|---|---|---|---|
-| `model-a-lgbm-features-v3` | LightGBM | v3 | 0.955 | 0.952 ✅ | 0.713 ❌ | 1444 | Mejor Precision hasta ahora |
-| `model-a-rf-features-v3` | Random Forest | v3 | 0.950 | 0.947 ❌ | 0.716 ❌ | 1416 | Recall < 0.95 con v3 |
-| `model-a-xgboost-features-v3` | XGBoost | v3 | 0.948 | 0.958 ✅ | 0.649 ❌ | 1946 | Recall OK pero Precision baja |
-| `model-a-logreg-features-v3` | Logistic Regression | v3 | 0.777 | 0.977 ✅ | 0.417 ❌ | 5138 | Descartado — no separa clases |
+| `model-a-lgbm-features-v3` | LightGBM | v3 | 0.955 | 0.952 ✅ | 0.713 ❌ | 1444 | Best Precision so far |
+| `model-a-rf-features-v3` | Random Forest | v3 | 0.950 | 0.947 ❌ | 0.716 ❌ | 1416 | Recall < 0.95 with v3 |
+| `model-a-xgboost-features-v3` | XGBoost | v3 | 0.948 | 0.958 ✅ | 0.649 ❌ | 1946 | Recall OK but low Precision |
+| `model-a-logreg-features-v3` | Logistic Regression | v3 | 0.777 | 0.977 ✅ | 0.417 ❌ | 5138 | Discarded — does not separate classes |
 
-**Gap pendiente:** Precision 0.713 → 0.85 = 0.137 por cerrar. La próxima iteración (v4) trabaja sobre los 935 FP GET con análisis de estructura de URL.
+**Pending gap:** Precision 0.713 → 0.85 = 0.137 left to close. The next iteration (v4) tackles the 935 GET FPs with URL structure analysis.
 
 ---
 
-## Flujo de decisión resumido
+## Summarized decision flow
 
 ```
-¿El run cumple Recall ≥ 0.95?
-    ├── No → Bajar threshold o revisar el split. No pasar a producción.
-    └── Sí → ¿Cumple Precision ≥ 0.85?
-                ├── No → Analizar feature importance y FP. Planificar próxima iteración de features.
-                └── Sí → Candidato a registrar en Model Registry.
-                          Validar en test set. Registrar con mlflow.register_model().
+Does the run meet Recall ≥ 0.95?
+    ├── No → Lower threshold or review split. Do not push to production.
+    └── Yes → Does it meet Precision ≥ 0.85?
+                ├── No → Analyze feature importance and FP. Plan next feature iteration.
+                └── Yes → Candidate for Model Registry.
+                          Validate on test set. Register with mlflow.register_model().
 ```

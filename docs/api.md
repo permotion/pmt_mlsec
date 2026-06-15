@@ -1,46 +1,46 @@
 # FastAPI — Inference API
 
-Endpoint REST para clasificar requests HTTP como ataque (1) o normal (0) usando el modelo LightGBM de Model A.
+REST endpoint to classify HTTP requests as attack (1) or normal (0) using Model A's LightGBM model.
 
-**En producción (Docker):** `http://localhost:5082`
-**UI de docs interactiva:** `http://localhost:5082/docs`
+**In production (Docker):** `http://localhost:5082`
+**Interactive docs UI:** `http://localhost:5082/docs`
 **Health:** `http://localhost:5082/health`
 
 ---
 
-## Arquitectura
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    docker-compose                           │
 │                                                             │
 │   ┌──────────┐   ┌───────────┐   ┌───────────────────────┐  │
-│   │  mlflow  │──▶│   api    │──▶│  LightGBM (descargado│  │
-│   │ :5000   │   │  :5082   │   │  desde artefacto)     │  │
+│   │  mlflow  │──▶│   api    │──▶│  LightGBM (downloaded  │  │
+│   │ :5000   │   │  :5082   │   │  from artifact)       │  │
 │   └──────────┘   └───────────┘   └───────────────────────┘  │
-│   artefacto del     FastAPI +                     Modelo    │
-│   modelo guardado   Pydantic                     listo     │
+│   saved model      FastAPI +                     Ready     │
+│   artifact         Pydantic                      Model     │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-El contenedor de la API se conecta al servidor MLflow (`http://mlflow:5000`) al arrancar, busca el run con mejor Recall del experimento `mlsec-model-a`, descarga el artefacto `model/` y carga el modelo en memoria. Todo esto pasa una sola vez en startup.
+The API container connects to the MLflow server (`http://mlflow:5000`) on startup, looks for the run with the best Recall in the `mlsec-model-a` experiment, downloads the `model/` artifact, and loads the model into memory. All this happens only once at startup.
 
 ---
 
-## Cómo levantar
+## How to start
 
 ```bash
-# Todos los servicios (postgres + mlflow + airflow + api)
+# All services (postgres + mlflow + airflow + api)
 cd docker && docker compose up
 
-# Solo la API (requiere mlflow corriendo)
+# Only the API (requires mlflow running)
 docker compose -f docker/docker-compose.yml up api
 ```
 
-**Servicios disponibles:**
+**Available services:**
 
-| Servicio | Puerto | URL |
+| Service | Port | URL |
 |---|---|---|
 | API | 5082 | http://localhost:5082/docs |
 | Airflow | 5080 | http://localhost:5080 |
@@ -52,7 +52,7 @@ docker compose -f docker/docker-compose.yml up api
 
 ### `GET /health`
 
-Verifica que la API está viva y el modelo está cargado.
+Verifies that the API is alive and the model is loaded.
 
 ```bash
 curl http://localhost:5082/health
@@ -66,16 +66,16 @@ curl http://localhost:5082/health
 }
 ```
 
-| Estado | Significado |
+| Status | Meaning |
 |---|---|
-| `ok` | API viva + modelo cargado ✅ |
-| `degraded` | API viva pero modelo no cargó ❌ (ver logs del contenedor) |
+| `ok` | API alive + model loaded ✅ |
+| `degraded` | API alive but model failed to load ❌ (check container logs) |
 
 ---
 
 ### `GET /features`
 
-Lista las 23 features que el modelo espera, en orden exacto.
+Lists the 23 features the model expects, in exact order.
 
 ```bash
 curl http://localhost:5082/features
@@ -100,14 +100,14 @@ curl http://localhost:5082/features
 }
 ```
 
-!!! warning "Orden de las features importa"
-    El array de features debe enviarse en este orden exacto. Cada posición corresponde a la columna del parquet de entrenamiento.
+!!! warning "Feature order matters"
+    The features array must be sent in this exact order. Each position corresponds to the training parquet column.
 
 ---
 
 ### `POST /predict`
 
-Clasifica un request HTTP.
+Classifies an HTTP request.
 
 ```bash
 curl -X POST http://localhost:5082/predict \
@@ -148,23 +148,23 @@ curl -X POST http://localhost:5082/predict \
 }
 ```
 
-| Campo | Descripción |
+| Field | Description |
 |---|---|
-| `prediction` | `0` = normal, `1` = ataque |
-| `probability` | `P(ataque)` según LightGBM |
-| `threshold` | Umbral usado para la decisión (`0.2903`) |
-| `model_version` | Tag del modelo cargado |
+| `prediction` | `0` = normal, `1` = attack |
+| `probability` | `P(attack)` according to LightGBM |
+| `threshold` | Threshold used for the decision (`0.2903`) |
+| `model_version` | Tag of the loaded model |
 
 ---
 
-## Feature extraction — de HTTP request a 23 features
+## Feature extraction — from HTTP request to 23 features
 
-Esta sección documenta exactamente cómo computar cada una de las 23 features a partir de un request HTTP crudo (method, URL, body). Toda la lógica replica `src/mlsec/data/preprocess_csic_v4.py`, que fue validada contra el dataset CSIC 2010 durante las iteraciones de feature engineering.
+This section documents exactly how to compute each of the 23 features from a raw HTTP request (method, URL, body). All logic replicates `src/mlsec/data/preprocess_csic_v4.py`, which was validated against the CSIC 2010 dataset during feature engineering iterations.
 
-### Flujo de parsing
+### Parsing flow
 
 ```
-HTTP Request crudo
+Raw HTTP Request
 ├── Method  →  method_is_get / method_is_post / method_is_put
 ├── URL     →  url_length / url_param_count / url_pct_density
 │               url_path_depth / url_query_length / url_has_query
@@ -178,19 +178,19 @@ HTTP Request crudo
 
 ---
 
-### Paso 1 — Method encoding
+### Step 1 — Method encoding
 
 ```python
 def encode_method(method: str) -> tuple[int, int, int]:
     """
-    One-hot encoding del método HTTP.
+    One-hot encoding of the HTTP method.
 
     Args:
-        method: método HTTP en texto (ej: "GET", "POST", "PUT")
+        method: HTTP method in text (e.g., "GET", "POST", "PUT")
 
     Returns:
         (method_is_get, method_is_post, method_is_put)
-        Cada valor es 1 si ese es el método, 0 si no.
+        Each value is 1 if that is the method, 0 otherwise.
     """
     m = method.upper()
     return (
@@ -200,55 +200,55 @@ def encode_method(method: str) -> tuple[int, int, int]:
     )
 ```
 
-| Método del request | method_is_get | method_is_post | method_is_put |
+| Request Method | method_is_get | method_is_post | method_is_put |
 |---|---|---|---|
 | GET / HEAD / DELETE / etc. | 1 | 0 | 0 |
 | POST | 0 | 1 | 0 |
 | PUT | 0 | 0 | 1 |
 
-**Nota:** en CSIC 2010, PUT tiene 100% de ataques — esta es la feature más discriminativa del dataset. DELETE y HEAD no existen en el training set.
+**Note:** in CSIC 2010, PUT has 100% attacks — this is the most discriminative feature in the dataset. DELETE and HEAD do not exist in the training set.
 
 ---
 
-### Paso 2 — URL features
+### Step 2 — URL features
 
-#### 2a. Features estructurales
+#### 2a. Structural features
 
 ```python
 from urllib.parse import urlparse
 
 def build_url_structural(url: str) -> dict:
     """
-    Extrae features estructurales de la URL.
+    Extracts structural features from the URL.
 
-    Estructura de una URL:
+    URL structure:
         scheme://netloc/path;params?query#fragment
     """
-    # Dividir en path y query string en el primer '?'
+    # Split into path and query string at the first '?'
     path_plus_query = url.split("?", 1)
     path            = path_plus_query[0]
     query           = path_plus_query[1] if len(path_plus_query) > 1 else ""
 
     return {
         "url_length":        len(url),
-        "url_param_count":   url.count("="),         # '=' en toda la URL
+        "url_param_count":   url.count("="),         # '=' in entire URL
         "url_pct_density":   url.count("%") / max(len(url), 1),
-        "url_path_depth":     path.count("/"),        # cantidad de '/' en el path
+        "url_path_depth":     path.count("/"),        # number of '/' in the path
         "url_query_length":  len(query),
         "url_has_query":     1 if "?" in url else 0,
     }
 ```
 
-| Feature | Cómo se computa | Ejemplo |
+| Feature | How it is computed | Example |
 |---|---|---|
 | `url_length` | `len(url)` | `/api/search?q=test&page=1` → 23 |
-| `url_param_count` | `url.count("=")` | Cuenta todos los `=` en la URL completa, incluyendo query string |
-| `url_pct_density` | `url.count("%") / len(url)` | `%` codifica caracteres especiales en ataques SQLi/XSS |
-| `url_path_depth` | `path.count("/")` | `/a/b/c` → 3 (3 separadores de segmento) |
-| `url_query_length` | `len(query_string)` | Solo lo que va después del `?` |
-| `url_has_query` | `1 if "?" in url else 0` | Indica si la URL tiene query string |
+| `url_param_count` | `url.count("=")` | Counts all `=` in the full URL, including query string |
+| `url_pct_density` | `url.count("%") / len(url)` | `%` encodes special characters in SQLi/XSS attacks |
+| `url_path_depth` | `path.count("/")` | `/a/b/c` → 3 (3 segment separators) |
+| `url_query_length` | `len(query_string)` | Only what comes after `?` |
+| `url_has_query` | `1 if "?" in url else 0` | Indicates if URL has a query string |
 
-**Ejemplo paso a paso:**
+**Step by step example:**
 
 ```
 URL:  /dvwa/vulnerabilities/sqli/?id=%27&Submit=Submit
@@ -263,19 +263,19 @@ url_query_length    = 28
 url_has_query       = 1
 ```
 
-#### 2b. Indicadores de texto en URL
+#### 2b. URL text indicators
 
 ```python
 TEXT_INDICATORS = {
-    "pct27":    "%27",    # encoding de comilla simple (')
-    "pct3c":    "%3C",    # encoding de '<'
-    "dashdash": "--",     # comentario SQL
-    "script":   "script", # XSS con etiquetas <script>
-    "select":   "SELECT", # keyword SQL (case-insensitive)
+    "pct27":    "%27",    # single quote encoding (')
+    "pct3c":    "%3C",    # '<' encoding
+    "dashdash": "--",     # SQL comment
+    "script":   "script", # XSS with <script> tags
+    "select":   "SELECT", # SQL keyword (case-insensitive)
 }
 
 def build_url_text_indicators(url: str) -> dict:
-    """Detecta patrones de ataque en la URL (case-insensitive)."""
+    """Detects attack patterns in the URL (case-insensitive)."""
     url_lower = url.lower()
     return {
         f"url_has_{name}": 1 if pattern.lower() in url_lower else 0
@@ -283,36 +283,36 @@ def build_url_text_indicators(url: str) -> dict:
     }
 ```
 
-| Pattern | Qué detecta | Ejemplo malicioso |
+| Pattern | What it detects | Malicious example |
 |---|---|---|
-| `%27` | Comilla simple URL-encodeda | `/?id=%27%20OR%201=1` |
-| `%3C` | `<` URL-encodeda | `/search?q=%3Cscript%3E` |
-| `--` | Comentario SQL | `/?id=1%20--` |
-| `script` | Etiqueta `<script>` en texto plano | `/xss?q=<script>alert(1)</script>` |
-| `SELECT` | Keyword SQL (case-insensitive) | `/search?q=SELECT%20*%20FROM%20users` |
+| `%27` | URL-encoded single quote | `/?id=%27%20OR%201=1` |
+| `%3C` | URL-encoded `<` | `/search?q=%3Cscript%3E` |
+| `--` | SQL comment | `/?id=1%20--` |
+| `script` | Plaintext `<script>` tag | `/xss?q=<script>alert(1)</script>` |
+| `SELECT` | SQL keyword (case-insensitive) | `/search?q=SELECT%20*%20FROM%20users` |
 
-!!! warning "URL encoding vs texto plano"
-    Los atacantes en CSIC 2010 **siempre** usan URL encoding para patrones SQLi/XSS.
-    Nunca usan `'`, `<` en texto literal — siempre `%27`, `%3C`.
-    Esto hace que `url_has_pct27` sea más confiable que buscar `'`.
+!!! warning "URL encoding vs plain text"
+    Attackers in CSIC 2010 **always** use URL encoding for SQLi/XSS patterns.
+    They never use literal `'`, `<` — always `%27`, `%3C`.
+    This makes `url_has_pct27` more reliable than looking for `'`.
 
 ---
 
-### Paso 3 — Content/Body features
+### Step 3 — Content/Body features
 
 ```python
 def build_content_features(body: str) -> dict:
     """
-    Extrae features del body del request HTTP.
+    Extracts features from the HTTP request body.
 
     Args:
-        body: contenido del body, o string vacío para GET.
-              Puede venir en el header Content-Length o en el body HTTP.
+        body: body content, or empty string for GET.
+              Can come from Content-Length header or HTTP body.
     """
     content = body if body else ""
 
     length   = len(content)
-    clipped  = max(length, 1)   # evitar división por cero
+    clipped  = max(length, 1)   # avoid division by zero
 
     return {
         "content_length":         length,
@@ -322,17 +322,17 @@ def build_content_features(body: str) -> dict:
     }
 ```
 
-| Feature | Cómo se computa | Ejemplo ataque | Ejemplo normal |
+| Feature | How it is computed | Attack example | Normal example |
 |---|---|---|---|
-| `content_length` | `len(body)` | Payload largo inyectado | Formulario de login corto |
-| `content_pct_density` | `body.count("%") / max(len(body), 1)` | `%27%20OR%201=1` → alta densidad de `%` | `username=tom&password=1234` → 0 |
+| `content_length` | `len(body)` | Long injected payload | Short login form |
+| `content_pct_density` | `body.count("%") / max(len(body), 1)` | `%27%20OR%201=1` → high `%` density | `username=tom&password=1234` → 0 |
 | `content_param_count` | `body.count("=")` | `id=%27%20OR%201=1&Submit=` → 2 | `username=tom&password=1234` → 2 |
-| `content_param_density` | `param_count / max(content_length, 1)` | Payload largo / pocos `=` → valor bajo | Formulario corto / muchos `=` → valor alto |
+| `content_param_density` | `param_count / max(content_length, 1)` | Long payload / few `=` → low value | Short form / many `=` → high value |
 
-**Ejemplo:**
+**Example:**
 
 ```
-# Request POST normal
+# Normal POST request
 body:  username=tom&password=1234&Submit=Login
        ───────────────────────────────────────
        content_length       = 37
@@ -340,20 +340,20 @@ body:  username=tom&password=1234&Submit=Login
        content_param_density = 3 / 37 = 0.081
        content_pct_density  = 0
 
-# Request POST malicioso (SQLi)
+# Malicious POST request (SQLi)
 body:  id=%27%20OR%20%271%27%3D%271&Submit=Submit
        ─────────────────────────────────────────
        content_length       = 44
        content_param_count  = 2
-       content_param_density = 2 / 44 = 0.045   ← menor que el normal
-       content_pct_density  = 9 / 44 = 0.205   ← indicador de encoding
+       content_param_density = 2 / 44 = 0.045   ← lower than normal
+       content_pct_density  = 9 / 44 = 0.205   ← encoding indicator
 ```
 
-#### Indicadores de texto en body
+#### Body text indicators
 
 ```python
 def build_content_text_indicators(body: str) -> dict:
-    """Detecta patrones de ataque en el body (case-insensitive)."""
+    """Detects attack patterns in the body (case-insensitive)."""
     content_lower = (body if body else "").lower()
     return {
         f"content_has_{name}": 1 if pattern.lower() in content_lower else 0
@@ -361,11 +361,11 @@ def build_content_text_indicators(body: str) -> dict:
     }
 ```
 
-Los mismos 5 patrones que en URL (`pct27`, `pct3c`, `dashdash`, `script`, `select`) se buscan en el body.
+The same 5 patterns as in URL (`pct27`, `pct3c`, `dashdash`, `script`, `select`) are searched for in the body.
 
 ---
 
-### Función completa — `extract_features()`
+### Complete function — `extract_features()`
 
 ```python
 from urllib.parse import urlparse
@@ -381,17 +381,17 @@ TEXT_INDICATORS = {
 
 def extract_features(method: str, url: str, body: str | None = None) -> list[float]:
     """
-    Convierte un HTTP request a las 23 features del modelo.
+    Converts an HTTP request to the 23 model features.
 
     Args:
-        method: método HTTP (GET, POST, PUT, etc.)
-        url:    URL completa (con o sin scheme)
-        body:   body del request (None o "" para GET)
+        method: HTTP method (GET, POST, PUT, etc.)
+        url:    Full URL (with or without scheme)
+        body:   Request body (None or "" for GET)
 
     Returns:
-        Lista ordenada de 23 floats — el orden es el de FEATURE_NAMES.
+        Ordered list of 23 floats — order matches FEATURE_NAMES.
 
-    Ejemplo de uso:
+    Usage example:
         >>> features = extract_features(
         ...     method="POST",
         ...     url="/dvwa/vulnerabilities/sqli/?id=%27&Submit=Submit",
@@ -459,29 +459,29 @@ def extract_features(method: str, url: str, body: str | None = None) -> list[flo
 
 ---
 
-### Casos borde
+### Edge cases
 
-| Caso | Comportamiento |
+| Case | Behavior |
 |---|---|
-| `body = None` o `body = ""` | Treats as empty string — `content_length=0`, todas las densities = 0 |
-| URL sin `?` | `url_query_length=0`, `url_has_query=0`, query string tratada como vacía |
-| Path sin `/` | `url_path_depth=0` (ej: `/login` → 1) |
-| `content_length = 0` | `content_param_density = 0` (usamos `max(len, 1)` como denominador) |
-| Case en `script` / `SELECT` | Se compara en lowercase — `SELECT`, `Select`, `select` dan `content_has_select=1` |
-| `%` literal en URL (no encoding) | Se cuenta igual que `%3C` — puede dar falsos positivos en URLs legítimas con `%20` encoding |
+| `body = None` or `body = ""` | Treats as empty string — `content_length=0`, all densities = 0 |
+| URL without `?` | `url_query_length=0`, `url_has_query=0`, query string treated as empty |
+| Path without `/` | `url_path_depth=0` (e.g., `/login` → 1) |
+| `content_length = 0` | `content_param_density = 0` (we use `max(len, 1)` as denominator) |
+| Case in `script` / `SELECT` | Compared in lowercase — `SELECT`, `Select`, `select` yield `content_has_select=1` |
+| Literal `%` in URL (no encoding) | Counted same as `%3C` — can yield false positives in legitimate URLs with `%20` encoding |
 
 ---
 
-### Ejemplo end-to-end
+### End-to-end example
 
 ```python
-# Request malicioso
+# Malicious request
 method = "POST"
 url    = "/dvwa/vulnerabilities/sqli/?id=%27%20OR%201%3D1&Submit=Submit"
 body   = "username=admin&password=%27%20OR%20%271%27%3D%271"
 
 features = extract_features(method, url, body)
-# Resultado:
+# Result:
 # [0, 1, 0,           # method: POST
 #  56, 2, 0.0536,      # url structural
 #  3, 28, 1,           # url query
@@ -489,85 +489,85 @@ features = extract_features(method, url, body)
 #  44, 0.2045, 2, 0.045,  # body structural
 #  1, 1, 0, 0, 0]     # body text: %27 ✅ %3C ✅
 
-# Request normal
+# Normal request
 method = "GET"
 url    = "/api/users/123"
 body   = ""
 
 features = extract_features(method, url, body)
-# Resultado:
+# Result:
 # [1, 0, 0,           # method: GET
 #  12, 1, 0.0,        # url structural
 #  2, 0, 0,           # url query: /api/users/123 → depth=3
-#  0, 0, 0, 0, 0,     # url text: sin indicadores
-#  0, 0.0, 0, 0.0,    # body: vacío
-#  0, 0, 0, 0, 0]     # body text: todo 0
+#  0, 0, 0, 0, 0,     # url text: no indicators
+#  0, 0.0, 0, 0.0,    # body: empty
+#  0, 0, 0, 0, 0]     # body text: all 0
 ```
 
 ---
 
-### Cómo usar esto en la práctica
+### How to use this in practice
 
-Si necesitás extraer features desde requests HTTP reales (logs de un proxy, tráfico capturado, etc.):
+If you need to extract features from real HTTP requests (proxy logs, captured traffic, etc.):
 
 ```python
-# Ejemplo con un log de Nginx
+# Example with an Nginx log
 log_line = '127.0.0.1 - - [13/Apr/2026:10:00:00 +0000] ' \
             '"POST /dvwa/vulnerabilities/sqli/?id=%27 HTTP/1.1" 200 1234'
 
-# Parsear método y URL del log (formato: "METHOD /path?query HTTP/1.1")
+# Parse method and URL from log (format: "METHOD /path?query HTTP/1.1")
 parts = log_line.split('"')[1].split()
 method = parts[0]
 url    = parts[1]
 
-# Llamar a la extract_features
+# Call extract_features
 features = extract_features(method, url, body=None)
 ```
 
-Para requests POST con body real, el body se obtiene del payload HTTP.
+For POST requests with an actual body, the body is obtained from the HTTP payload.
 
 ---
 
-## Features — referencia completa
+## Features — complete reference
 
-### Binarias (0 o 1)
+### Binary (0 or 1)
 
-| Feature | Descripción |
+| Feature | Description |
 |---|---|
-| `method_is_get` | Request GET |
-| `method_is_post` | Request POST |
-| `method_is_put` | Request PUT — 100% ataques en CSIC 2010 |
-| `url_has_query` | URL tiene query string (`?`) |
-| `url_has_pct27` | `%27` en URL (encoding de `'`) |
-| `url_has_pct3c` | `%3C` en URL (encoding de `<`) |
-| `url_has_dashdash` | `--` en URL |
-| `url_has_script` | `script` en URL |
-| `url_has_select` | `select` en URL |
-| `content_has_pct27` | `%27` en body |
-| `content_has_pct3c` | `%3C` en body |
-| `content_has_dashdash` | `--` en body |
-| `content_has_script` | `script` en body |
-| `content_has_select` | `select` en body |
+| `method_is_get` | GET Request |
+| `method_is_post` | POST Request |
+| `method_is_put` | PUT Request — 100% attacks in CSIC 2010 |
+| `url_has_query` | URL has query string (`?`) |
+| `url_has_pct27` | `%27` in URL (`'` encoding) |
+| `url_has_pct3c` | `%3C` in URL (`<` encoding) |
+| `url_has_dashdash` | `--` in URL |
+| `url_has_script` | `script` in URL |
+| `url_has_select` | `select` in URL |
+| `content_has_pct27` | `%27` in body |
+| `content_has_pct3c` | `%3C` in body |
+| `content_has_dashdash` | `--` in body |
+| `content_has_script` | `script` in body |
+| `content_has_select` | `select` in body |
 
-### Continuas (valores numéricos)
+### Continuous (numeric values)
 
-| Feature | Tipo | Descripción |
+| Feature | Type | Description |
 |---|---|---|
-| `url_length` | int | Longitud total de la URL |
-| `url_param_count` | int | Cantidad de parámetros en la query string |
-| `url_pct_density` | float | Densidad de `%` en la URL |
-| `url_path_depth` | int | Profundidad del path (`/` segments) |
-| `url_query_length` | int | Longitud del query string |
-| `content_length` | int | Longitud del body (0 para GET) |
-| `content_pct_density` | float | Densidad de `%` en el body |
-| `content_param_count` | int | Cantidad de `=` en el body |
+| `url_length` | int | Total URL length |
+| `url_param_count` | int | Number of parameters in query string |
+| `url_pct_density` | float | `%` density in URL |
+| `url_path_depth` | int | Path depth (`/` segments) |
+| `url_query_length` | int | Query string length |
+| `content_length` | int | Body length (0 for GET) |
+| `content_pct_density` | float | `%` density in body |
+| `content_param_count` | int | Number of `=` in body |
 | `content_param_density` | float | `content_param_count / content_length` |
 
 ---
 
-## Preprocessing en la API
+## Preprocessing in the API
 
-El modelo fue entrenado con **StandardScaler** aplicado a 3 features continuas. La API aplica la misma transformación con parámetros hardcodeados (fit en train set original):
+The model was trained with **StandardScaler** applied to 3 continuous features. The API applies the same transformation with hardcoded parameters (fit on the original train set):
 
 | Feature | Mean | Std |
 |---|---|---|
@@ -582,79 +582,79 @@ for i, col in enumerate(CONTINUOUS_COLS):
     features[0, idx] = (features[0, idx] - SCALER_MEAN[i]) / SCALER_STD[i]
 ```
 
-Las features binarias no se transforman.
+Binary features are not transformed.
 
 ---
 
-## Modelo y threshold
+## Model and threshold
 
-### Modelo
+### Model
 
-- **Algoritmo:** LightGBM
-- **Dataset:** CSIC 2010 (61.065 requests, 41% ataques)
+- **Algorithm:** LightGBM
+- **Dataset:** CSIC 2010 (61,065 requests, 41% attacks)
 - **Features:** 23 (v4)
 - **n_estimators:** 200
-- **Artefacto guardado con:** `mlflow.sklearn.log_model()`
-- **Ubicación:** MLflow server → experimento `mlsec-model-a` → último run → artifact `model/`
+- **Artifact saved with:** `mlflow.sklearn.log_model()`
+- **Location:** MLflow server → experiment `mlsec-model-a` → latest run → artifact `model/`
 
 ### Threshold
 
-El threshold de decisión es **0.2903** — no 0.5.
+The decision threshold is **0.2903** — not 0.5.
 
-Este valor fue calibrado en el task `train` del DAG para maximizar Precision manteniendo Recall ≥ 0.955 en el validation set. El resultado de esa calibración es que:
+This value was calibrated in the DAG's `train` task to maximize Precision while maintaining Recall ≥ 0.955 on the validation set. The result of that calibration is that:
 
-- **Cualquier probabilidad ≥ 0.2903 → attack (1)**
-- **Cualquier probabilidad < 0.2903 → normal (0)**
+- **Any probability ≥ 0.2903 → attack (1)**
+- **Any probability < 0.2903 → normal (0)**
 
-### Sobre las probabilidades absolutas
+### About absolute probabilities
 
-!!! warning "Probabilidades sesgadas por scale_pos_weight"
-    El modelo fue entrenado con `scale_pos_weight = neg/pos ≈ 1.44` (el dataset tiene 59% normales / 41% ataques). Esto sesga las probabilidades hacia la clase minoritaria (ataque) y hace que las probabilidades absolutas sean difíciles de interpretar.
+!!! warning "Probabilities skewed by scale_pos_weight"
+    The model was trained with `scale_pos_weight = neg/pos ≈ 1.44` (the dataset has 59% normal / 41% attacks). This skews the probabilities towards the minority class (attack) and makes the absolute probabilities hard to interpret.
 
-    Un request normal puede devolver `probability=0.98` no porque el modelo esté seguro de que es ataque, sino porque el `scale_pos_weight` infló artificialmente la probabilidad de la clase positiva.
+    A normal request might return `probability=0.98` not because the model is sure it's an attack, but because the `scale_pos_weight` artificially inflated the positive class's probability.
 
-    El threshold de 0.2903 compensa parcialmente esto — fue calibrado específicamente para el nivel de recall objetivo. No es equivalente a threshold=0.5 de un modelo sin reweighting.
+    The 0.2903 threshold partially compensates for this — it was specifically calibrated for the target recall level. It is not equivalent to threshold=0.5 of a model without reweighting.
 
-**En la práctica:** interpretar la `prediction` (0/1) como decisión final, y la `probability` como indicador de confianza relativo dentro del modelo. No usar la probabilidad absoluta como score directamente.
+**In practice:** interpret the `prediction` (0/1) as the final decision, and the `probability` as an indicator of relative confidence within the model. Do not use the absolute probability directly as a score.
 
 ---
 
-## Carga del modelo
+## Model Loading
 
 ```
-1. Revisa MODEL_PATH (env var) → archivo pickle local
-2. Si no existe → usa MLFLOW_TRACKING_URI → conecta al servidor MLflow
-3. Busca el run con mejor test_recall en experimento mlsec-model-a
-4. Descarga artefacto model/ desde artifact_uri
-5. Carga model.pkl en memoria
+1. Checks MODEL_PATH (env var) → local pickle file
+2. If it does not exist → uses MLFLOW_TRACKING_URI → connects to MLflow server
+3. Searches for the run with the best test_recall in the mlsec-model-a experiment
+4. Downloads model/ artifact from artifact_uri
+5. Loads model.pkl into memory
 ```
 
-Si nada está disponible → modo `degraded` (`/health` responde 503, `/predict` responde 500).
+If nothing is available → `degraded` mode (`/health` responds 503, `/predict` responds 500).
 
-### Variables de entorno
+### Environment variables
 
-| Variable | Default | Descripción |
+| Variable | Default | Description |
 |---|---|---|
-| `MLFLOW_TRACKING_URI` | `http://mlflow:5000` | Servidor MLflow para descargar el modelo |
-| `MODEL_PATH` | `models/model_a_lightgbm.pkl` | Path local al pickle del modelo |
-| `HOST` | `0.0.0.0` | Host del servidor |
-| `PORT` | `5082` | Puerto del servidor |
+| `MLFLOW_TRACKING_URI` | `http://mlflow:5000` | MLflow server to download the model |
+| `MODEL_PATH` | `models/model_a_lightgbm.pkl` | Local path to the model pickle |
+| `HOST` | `0.0.0.0` | Server host |
+| `PORT` | `5082` | Server port |
 
 ---
 
-## Estructura de archivos
+## File structure
 
 ```
 src/mlsec/api/
 ├── __init__.py
 ├── main.py              ← FastAPI app (endpoints)
 ├── models.py           ← Pydantic schemas (PredictRequest, PredictResponse)
-├── model_loader.py     ← Carga del modelo desde pickle o MLflow
-└── preprocessing.py    ← StandardScaler con parámetros hardcodeados
+├── model_loader.py     ← Model loading from pickle or MLflow
+└── preprocessing.py    ← StandardScaler with hardcoded parameters
 
 docker/
-├── Dockerfile.api      ← Imagen python:3.11-slim + libgomp1 + deps
-├── docker-compose.yml  ← Servicio api en puerto 5082
+├── Dockerfile.api      ← python:3.11-slim + libgomp1 + deps image
+├── docker-compose.yml  ← api service on port 5082
 └── ...                 ← MLflow, Airflow, Postgres
 
 requirements-api.txt    ← fastapi, uvicorn, pydantic, lightgbm, mlflow, etc.
@@ -662,19 +662,20 @@ requirements-api.txt    ← fastapi, uvicorn, pydantic, lightgbm, mlflow, etc.
 
 ---
 
-## Errores conocidos
+## Known errors
 
-### `scale_pos_weight` infla las probabilidades
+### `scale_pos_weight` inflates probabilities
 
-Un request normal puede devolver probabilidad 0.98. Esto es esperado — el modelo fue entrenado para maximizar recall, no calibrar probabilidades absolutas. Usar `prediction` para la decisión binaria.
+A normal request can return a 0.98 probability. This is expected — the model was trained to maximize recall, not to calibrate absolute probabilities. Use `prediction` for the binary decision.
 
-### `model_loaded: false` en /health
+### `model_loaded: false` in /health
 
-Ver los logs del contenedor:
+Check the container logs:
 ```bash
 docker logs pmtmlsec-api-1
 ```
-Causas comunes:
-- `libgomp.so.1` no instalado → rebuild con `docker compose build api`
-- MLflow no accesible desde la API → verificar `MLFLOW_TRACKING_URI`
-- Run del modelo no encontrado → verificar que el DAG corrió al menos una vez
+Common causes:
+- `libgomp.so.1` not installed → rebuild with `docker compose build api`
+- MLflow not accessible from API → verify `MLFLOW_TRACKING_URI`
+- Model run not found → verify the DAG ran at least once
+```

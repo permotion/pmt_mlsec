@@ -1,162 +1,162 @@
 # Brief — PMT MLSec
 
-Resumen del estado del proyecto, decisiones clave y aprendizajes. Actualizado al 2026-04-13.
+Summary of the project status, key decisions, and learnings. Updated as of 2026-04-13.
 
 ---
 
-## Qué es esto
+## What is this
 
-Sistema de detección de ataques con Machine Learning. MVP con dos modelos de clasificación binaria:
+Attack detection system using Machine Learning. MVP with two binary classification models:
 
-| Modelo | Input | Dataset | Target | Estado |
+| Model | Input | Dataset | Target | Status |
 |---|---|---|---|---|
-| A — Web Attack Detection | Features de request HTTP | CSIC 2010 (61.065 req) | Recall ≥ 0.95, Precision ≥ 0.85 | ✅ concluido |
-| B — Network Attack Detection | Features de flujo de red | UNSW-NB15 (257K flujos) | F1 ≥ 0.88, ROC-AUC ≥ 0.95 | 🔄 en progreso |
+| A — Web Attack Detection | HTTP request features | CSIC 2010 (61,065 req) | Recall ≥ 0.95, Precision ≥ 0.85 | ✅ concluded |
+| B — Network Attack Detection | Network flow features | UNSW-NB15 (257K flows) | F1 ≥ 0.88, ROC-AUC ≥ 0.95 | 🔄 in progress |
 
-Detección **offline** en el MVP — no hay bloqueo en tiempo real.
+**Offline** detection in the MVP — no real-time blocking.
 
 ---
 
-## Modelo A — CSIC 2010 (concluido)
+## Model A — CSIC 2010 (concluded)
 
-### Punto de partida
+### Starting point
 
-El dataset CSIC 2010 tiene 61.065 requests HTTP de una tienda española. 59% normales / 41% ataques (SQLi, XSS, buffer overflow, parameter tampering). Los ataques siempre usan URL encoding — nunca caracteres literales.
+The CSIC 2010 dataset has 61,065 HTTP requests from a Spanish store. 59% normal / 41% attacks (SQLi, XSS, buffer overflow, parameter tampering). Attacks always use URL encoding — never literal characters.
 
-Baseline: 4 modelos (LR, RF, XGBoost, LightGBM) con 15 features del EDA. El modelo alcanzó Recall 0.95 fácilmente pero Precision quedó en 0.655 — demasiados falsos positivos.
+Baseline: 4 models (LR, RF, XGBoost, LightGBM) with 15 EDA features. The model easily reached Recall 0.95 but Precision stayed at 0.655 — too many false positives.
 
-### Progresión de métricas
+### Metrics progression
 
-| Versión | ROC-AUC | Recall | Precision | FP | Estado |
+| Version | ROC-AUC | Recall | Precision | FP | Status |
 |---|---|---|---|---|---|
 | Baseline | 0.939 | 0.951 | 0.655 | 1886 | ❌ |
 | v2 — url_pct_density + url_param_count | 0.950 | 0.950 | 0.704 | 1504 | ❌ |
 | v3 — content_pct_density + MLflow | 0.955 | 0.952 | 0.713 | 1444 | ❌ |
 | v4 — url_path_depth, url_query_length, url_has_query | 0.966 | 0.949 | 0.803 | 877 | ❌ |
-| v5 — Calibración threshold (min_recall_val=0.955) | 0.966 | 0.956 ✅ | 0.792 | 943 | ❌ |
+| v5 — Threshold calibration (min_recall_val=0.955) | 0.966 | 0.956 ✅ | 0.792 | 943 | ❌ |
 | v6 — content_param_density | 0.966 | 0.955 ✅ | 0.793 | 938 | ❌ |
-| v7 — Latin-1 features (no incorporadas) | 0.968 | 0.953 ✅ | 0.793 | 936 | ❌ |
+| v7 — Latin-1 features (not incorporated) | 0.968 | 0.953 ✅ | 0.793 | 936 | ❌ |
 | **Target** | — | **0.95** | **0.85** | ~630 | — |
 
-### Los 4 problemas que se resolvieron
+### The 4 problems solved
 
-**Problema 1 — Techo de ROC-AUC 0.94 (Baseline → v1)**
+**Problem 1 — ROC-AUC ceiling of 0.94 (Baseline → v1)**
 
-El baseline LightGBM llegó a ROC-AUC 0.939 y no mejoraba. El diagnóstico fue que el límite no era el algoritmo sino las features. Análisis de feature importance + análisis de los 1.886 FP identificó que el modelo no tenía información sobre la densidad de encoding en la URL. Las features `url_pct_density` y `url_param_count` subieron ROC-AUC a 0.950 y Precision a 0.704 (-382 FP).
+The LightGBM baseline reached ROC-AUC 0.939 and wasn't improving. The diagnosis was that the limit wasn't the algorithm but the features. Feature importance analysis + analysis of the 1,886 FPs identified that the model lacked information about encoding density in the URL. The `url_pct_density` and `url_param_count` features raised ROC-AUC to 0.950 and Precision to 0.704 (-382 FP).
 
-**Problema 2 — Cuerpo POST sin features (v3 → v4)**
+**Problem 2 — POST body without features (v3 → v4)**
 
-Los ataques POST tenían body con encoding denso pero el modelo solo tenía `content_length`. Se agregaron `content_pct_density` y `content_param_count` para el body, y luego las features de estructura de URL (`url_path_depth`, `url_query_length`, `url_has_query`) para el GET. v4 produjo el mayor salto del proyecto: Precision 0.713 → 0.803 (+0.090), FP -567, y rompió el techo de ROC-AUC por primera vez (0.955 → 0.966).
+POST attacks had densely encoded bodies but the model only had `content_length`. `content_pct_density` and `content_param_count` were added for the body, followed by URL structure features (`url_path_depth`, `url_query_length`, `url_has_query`) for GET. v4 produced the biggest leap in the project: Precision 0.713 → 0.803 (+0.090), FP -567, and broke the ROC-AUC ceiling for the first time (0.955 → 0.966).
 
-**Problema 3 — Recall bajo threshold fijo (v4 → v5)**
+**Problem 3 — Low recall under fixed threshold (v4 → v5)**
 
-Con el threshold por defecto (0.5), LightGBM v4 tenía Recall 0.9492 — por debajo del mínimo 0.95. El threshold 0.5 no tiene ningún fundamento en este problema: el modelo tiene 41% de positivos, no 50%. Se implementó un sweep de `min_recall_val` (0.950 → 0.985) que optimiza el threshold en validation buscando el que maximiza Precision manteniendo Recall ≥ target. El valor óptimo fue `min_recall_val=0.955` → threshold calibrado 0.2573 → Recall test 0.9556 ✅.
+With the default threshold (0.5), LightGBM v4 had Recall 0.9492 — below the 0.95 minimum. The 0.5 threshold has no basis in this problem: the model has 41% positives, not 50%. A sweep of `min_recall_val` (0.950 → 0.985) was implemented to optimize the threshold in validation, seeking the one that maximizes Precision while maintaining Recall ≥ target. The optimal value was `min_recall_val=0.955` → calibrated threshold 0.2573 → Test Recall 0.9556 ✅.
 
-**Problema 4 — Root cause de los FP: confusión de encoding (v6)**
+**Problem 4 — Root cause of FPs: encoding confusion (v6)**
 
-Con 938 FP después de v5, se inspeccionó el CSV crudo. Los FP de alta confianza (proba > 0.70) eran todos formularios legítimos de la tienda española con nombres como `Murgu%EDa`, `lIMpi%24a%FA%F1as`. El modelo los confundía con ataques porque `content_pct_density` cuenta todos los `%XX` por igual — `%F1` (ñ) produce la misma señal que `%27` (SQLi). Los headers `cookie` y `content-type` fueron descartados como señal: el 100% de los requests tienen cookie y content-type es idéntico entre FP y TN del mismo método.
+With 938 FPs after v5, the raw CSV was inspected. High-confidence FPs (proba > 0.70) were all legitimate Spanish store forms with names like `Murgu%EDa`, `lIMpi%24a%FA%F1as`. The model confused them with attacks because `content_pct_density` counts all `%XX` equally — `%F1` (n-tilde) produces the same signal as `%27` (SQLi). The `cookie` and `content-type` headers were discarded as signals: 100% of requests have a cookie and content-type is identical between FP and TN of the same method.
 
-### El problema que no se pudo resolver
+### The problem that couldn't be solved
 
-**La hipótesis Latin-1 falló (v7)**
+**The Latin-1 hypothesis failed (v7)**
 
-La hipótesis era: los ataques nunca usan Latin-1 (no hay razón para encodear ñ en un payload SQL), así que `content_pct_latin1_density` discriminaría FP de TN. La hipótesis era técnicamente correcta para ataques reales — pero CSIC 2010 tiene un quirk: el generador de ataques construye requests contra una tienda española e incluye nombres de campo en español con caracteres acentuados. El body de un ataque POST típico es `apellidos=Garc%EDa&pass=%27+OR+1%3D1--` — el payload de inyección está en el valor de `pass`, pero el nombre del campo `apellidos` tiene `%ED` (í). Distribución prácticamente idéntica: media normal 0.00420 vs ataque 0.00413. Correlación POST: -0.004. Impacto: -2 FP.
+The hypothesis was: attacks never use Latin-1 (there is no reason to encode n-tilde in an SQL payload), so `content_pct_latin1_density` would discriminate FP from TN. The hypothesis was technically correct for real attacks — but CSIC 2010 has a quirk: the attack generator builds requests against a Spanish store and includes Spanish field names with accented characters. The body of a typical POST attack is `apellidos=Garc%EDa&pass=%27+OR+1%3D1--` — the injection payload is in the `pass` value, but the `apellidos` field name has `%ED` (i-acute). Distribution is virtually identical: normal mean 0.00420 vs attack 0.00413. POST correlation: -0.004. Impact: -2 FP.
 
-### Techo práctico y decisión
+### Practical ceiling and decision
 
-Después de v5, v6 y v7, el patrón es claro: los 936 FP son requests normales que el modelo no puede diferenciar de ataques con las dimensiones disponibles de campos HTTP individuales.
+After v5, v6, and v7, the pattern is clear: the 936 FPs are normal requests that the model cannot differentiate from attacks using the available dimensions of individual HTTP fields.
 
-| Dimensión analizada | Resultado |
+| Dimension analyzed | Result |
 |---|---|
-| Longitud y estructura de URL/body | Agotado desde v4 |
-| Indicadores de keywords (`%27`, `SELECT`) | 98.6% de FP sin ninguno |
-| Estructura de query string | Agotado desde v4 |
-| Densidad de parámetros (`content_param_density`) | Señal real pero marginal (-5 FP) |
-| Encoding Latin-1 | Sin separación — ataques también tienen Latin-1 |
-| Headers HTTP (cookie, content-type) | Sin señal — constantes en el dataset |
+| URL/body length and structure | Exhausted since v4 |
+| Keyword indicators (`%27`, `SELECT`) | 98.6% of FPs have none |
+| Query string structure | Exhausted since v4 |
+| Parameter density (`content_param_density`) | Real but marginal signal (-5 FP) |
+| Latin-1 encoding | No separation — attacks also have Latin-1 |
+| HTTP Headers (cookie, content-type) | No signal — constant in the dataset |
 
-**Decisión:** aceptar Precision ~0.793 como techo práctico y avanzar a Modelo B. El gap de 0.057 para llegar a 0.85 requeriría parseo semántico de valores de parámetros (distinguir `key=valor_normal` de `key=%27OR1%3D1`) o features de sesión — un cambio de enfoque, no más feature engineering sobre campos HTTP.
+**Decision:** accept Precision ~0.793 as the practical ceiling and advance to Model B. The 0.057 gap to reach 0.85 would require semantic parsing of parameter values (distinguishing `key=normal_value` from `key=%27OR1%3D1`) or session features — a change in approach, not more feature engineering on HTTP fields.
 
-Precision 0.793 con Recall 0.953 es un punto de partida válido para producción con revisión manual de alarmas. Con 936 FP, la tasa de falsa alarma es manejable en un sistema de detección offline.
+Precision 0.793 with Recall 0.953 is a valid starting point for production with manual review of alarms. With 936 FPs, the false alarm rate is manageable in an offline detection system.
 
-### Estado del código
+### Code status
 
 ```
 src/mlsec/data/
 ├── preprocess_csic_v1.py   → features.parquet      (15 features)
 ├── preprocess_csic_v2.py   → features_v2.parquet   (17 features)
 ├── preprocess_csic_v3.py   → features_v3.parquet   (22 features)
-└── preprocess_csic_v4.py   → features_v4.parquet   (23 features) ← versión final
+└── preprocess_csic_v4.py   → features_v4.parquet   (23 features) ← final version
 
 notebooks/experiments/
-├── csic2010_feature_analysis_v1.ipynb  ← análisis FP baseline
+├── csic2010_feature_analysis_v1.ipynb  ← baseline FP analysis
 ├── csic2010_feature_analysis_v2.ipynb  ← url features
 ├── csic2010_feature_analysis_v3.ipynb  ← content POST + MLflow
 ├── csic2010_feature_analysis_v4.ipynb  ← url structure GET
 ├── csic2010_feature_analysis_v5.ipynb  ← threshold calibration
 ├── csic2010_feature_analysis_v6.ipynb  ← content_param_density
-├── csic2010_fp_analysis_v6.py          ← análisis CSV crudo → root cause
-└── csic2010_feature_analysis_v7.ipynb  ← Latin-1 hypothesis (no confirmada)
+├── csic2010_fp_analysis_v6.py          ← raw CSV analysis → root cause
+└── csic2010_feature_analysis_v7.ipynb  ← Latin-1 hypothesis (unconfirmed)
 ```
 
-**MLflow:** experimento `mlsec-model-a`, backend SQLite `mlflow.db`. 28 runs, naming `model-a-{algoritmo}-features-{version}`.
+**MLflow:** `mlsec-model-a` experiment, `mlflow.db` SQLite backend. 28 runs, naming `model-a-{algorithm}-features-{version}`.
 
 ---
 
-## Modelo B — UNSW-NB15 (en progreso)
+## Model B — UNSW-NB15 (in progress)
 
 ### Dataset
 
-UNSW-NB15: 257.673 flujos de red (175.341 train / 82.332 test — splits predefinidos). 9 categorías de ataque: Generic (33%), Exploits (28%), Fuzzers (15%), DoS (4%), Reconnaissance (5%), Analysis, Backdoor, Shellcode, Worms. Desbalance inverso: 68% ataques en train.
+UNSW-NB15: 257,673 network flows (175,341 train / 82,332 test — predefined splits). 9 attack categories: Generic (33%), Exploits (28%), Fuzzers (15%), DoS (4%), Reconnaissance (5%), Analysis, Backdoor, Shellcode, Worms. Inverse imbalance: 68% attacks in train.
 
-### Hallazgos del EDA
+### EDA Findings
 
-- `dload` (bytes descargados): correlación -0.394 con el label — tráfico normal descarga más datos
-- `rate`, `ct_dst_sport_ltm`: correlación 0.338 / 0.357
-- Outliers extremos: `sbytes` max 12M, `sload` max 5.9B → `RobustScaler`
-- Features redundantes descartadas: `dwin` (0.99 con `swin`), `dloss` (0.98 con `dpkts`), `is_sm_ips_ports`
-- `proto`: 133 valores únicos → top-10 + "other" encoding
-- No hay nulos
+- `dload` (bytes downloaded): -0.394 correlation with the label — normal traffic downloads more data
+- `rate`, `ct_dst_sport_ltm`: 0.338 / 0.357 correlation
+- Extreme outliers: `sbytes` max 12M, `sload` max 5.9B → `RobustScaler`
+- Discarded redundant features: `dwin` (0.99 with `swin`), `dloss` (0.98 with `dpkts`), `is_sm_ips_ports`
+- `proto`: 133 unique values → top-10 + "other" encoding
+- No null values
 
-### Estrategia de preprocessing
+### Preprocessing strategy
 
-- `RobustScaler` para features numéricas continuas (outliers extremos)
-- Top-10+other para `proto`, one-hot directo para `service` y `state`
-- Splits predefinidos en los parquets — no se hace train/test split propio
+- `RobustScaler` for continuous numerical features (extreme outliers)
+- Top-10+other for `proto`, direct one-hot for `service` and `state`
+- Predefined splits in the parquets — no custom train/test split
 
-### Qué sigue
+### What's next
 
-1. Implementar `preprocess_unsw.py` con las decisiones del EDA
-2. Generar `features.parquet` (train + test)
-3. Entrenar baseline (RF, XGBoost, LightGBM) — sin LR, no escala bien a 62 features continuas
-4. Analizar FP/FN con el mismo workflow que Modelo A
-5. Iterar features hasta F1 ≥ 0.88 / ROC-AUC ≥ 0.95
+1. Implement `preprocess_unsw.py` with EDA decisions
+2. Generate `features.parquet` (train + test)
+3. Train baseline (RF, XGBoost, LightGBM) — no LR, doesn't scale well to 62 continuous features
+4. Analyze FP/FN with the same workflow as Model A
+5. Iterate features until F1 ≥ 0.88 / ROC-AUC ≥ 0.95
 
-### Diferencias respecto a Modelo A
+### Differences from Model A
 
-| Aspecto | Modelo A (CSIC) | Modelo B (UNSW) |
+| Aspect | Model A (CSIC) | Model B (UNSW) |
 |---|---|---|
-| Features de entrada | Texto (URL, body) → ingeniería manual | Numéricas de red → menos ingeniería manual |
-| Métrica objetivo | Recall + Precision | F1 + ROC-AUC |
-| Desbalance | Leve 59/41 | Inverso 32/68 (más ataques que normal) |
-| Splits | Generados por nosotros (70/15/15) | Predefinidos en el dataset |
-| Threshold | Calibrado con min_recall_val sweep | Por definir |
+| Input features | Text (URL, body) → manual engineering | Network numerical → less manual engineering |
+| Target metric | Recall + Precision | F1 + ROC-AUC |
+| Imbalance | Mild 59/41 | Inverse 32/68 (more attacks than normal) |
+| Splits | Generated by us (70/15/15) | Predefined in dataset |
+| Threshold | Calibrated with min_recall_val sweep | To be defined |
 
 ---
 
-## Aprendizajes clave del proyecto
+## Key learnings of the project
 
-**1. El threshold por defecto (0.5) casi siempre es incorrecto.**
-En Modelo A, con 41% de positivos, el threshold óptimo fue 0.2573. Fijar el threshold en validation buscando un target de recall mínimo es mucho más robusto que buscar el punto de máxima F1.
+**1. The default threshold (0.5) is almost always wrong.**
+In Model A, with 41% positives, the optimal threshold was 0.2573. Fixing the threshold in validation seeking a minimum recall target is much more robust than looking for the maximum F1 point.
 
-**2. Analizar FP en el CSV crudo vale más que agregar features a ciegas.**
-El root cause de los FP (confusión Latin-1 vs encoding de ataque) solo fue visible al leer los requests reales. El análisis de correlaciones y feature importance solo dice "la feature X tiene señal" — no dice por qué el modelo falla en casos específicos.
+**2. Analyzing FPs in the raw CSV is worth more than adding features blindly.**
+The root cause of the FPs (Latin-1 vs attack encoding confusion) was only visible by reading the actual requests. Correlation and feature importance analysis only say "feature X has signal" — it doesn't say why the model fails in specific cases.
 
-**3. Las correlaciones en la subpoblación relevante, no en el dataset completo.**
-`content_param_density` tiene correlación global +0.066 (ruido) pero correlación POST -0.216 (señal real). Calcular correlaciones en el dataset completo para features de body diluyó la señal con los GETs que tienen body vacío.
+**3. Correlations in the relevant subpopulation, not in the entire dataset.**
+`content_param_density` has a global correlation of +0.066 (noise) but a POST correlation of -0.216 (real signal). Calculating correlations on the full dataset for body features diluted the signal with GETs that have empty bodies.
 
-**4. Los datasets sintéticos tienen quirks que rompen hipótesis razonables.**
-CSIC 2010 fue generado con un script que incluye nombres de campo en español en los ataques. Esto hizo que la hipótesis Latin-1 — correcta en teoría — fallara empíricamente. Los datasets de benchmark tienen limitaciones que solo se descubren al inspeccionar los datos crudos.
+**4. Synthetic datasets have quirks that break reasonable hypotheses.**
+CSIC 2010 was generated with a script that includes Spanish field names in the attacks. This made the Latin-1 hypothesis — correct in theory — fail empirically. Benchmark datasets have limitations that are only discovered when inspecting the raw data.
 
-**5. Identificar el techo práctico es un resultado, no un fracaso.**
-Saber que Precision ~0.793 es el límite del enfoque de features HTTP individuales es información valiosa — evita gastar iteraciones en features que no van a mover el needle.
+**5. Identifying the practical ceiling is a result, not a failure.**
+Knowing that Precision ~0.793 is the limit of the individual HTTP fields approach is valuable information — it prevents wasting iterations on features that won't move the needle.

@@ -42,21 +42,19 @@ from mlsec.api.model_loader import (
     THRESHOLD as DEFAULT_THRESHOLD,
     MODEL_VERSION,
 )
-from mlsec.api.preprocessing import scale_continuous
 
 # ---------------------------------------------------------------------------
 # Estado global — se carga una sola vez al arrancar
 # ---------------------------------------------------------------------------
 model = None
-scaler = None
 threshold = DEFAULT_THRESHOLD
 model_load_error: str | None = None
 
 
 def load_model_once():
-    global model, scaler, threshold, model_load_error
+    global model, threshold, model_load_error
     try:
-        model, scaler, threshold = get_model()
+        model, _, threshold = get_model()
         print(f"Modelo cargado. Threshold: {threshold}")
     except Exception as exc:  # noqa: BLE001
         model_load_error = str(exc)
@@ -150,8 +148,6 @@ async def predict(req: PredictRequest):
     import numpy as np
 
     features = np.array([req.to_array()], dtype="float32")
-    # Aplicar StandardScaler (mismo preprocesamiento que en training)
-    features = scale_continuous(features, FEATURE_NAMES)
     proba = float(model.predict_proba(features)[:, 1][0])
     prediction = int(proba >= threshold)
 
